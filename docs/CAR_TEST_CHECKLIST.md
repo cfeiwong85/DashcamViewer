@@ -102,7 +102,7 @@ Do these only after Parts A to G, and only if you want to.
 - **I1.** **Diagnostics › Share the diagnostics log**, then **Save to Files** (or AirDrop it to the Mac). Do this before you close the app: the log lives only in the app's memory, and it is lost when the app is closed or when iOS closes it after a while in the background.
 - **I2.** Send me here: the log file or files, the screenshots, your notes by step ID, and anything else that seemed odd.
 
-The log contains the camera's Wi-Fi password and serial number (inside the camera's settings reply, in hex), and after H2 also the new password. Keep it out of public places such as GitHub issues; the repository is public.
+The app hides the camera's Wi-Fi password in the log: the bytes that held it show as `**`, and those lines end with "Wi-Fi password hidden". Older builds don't. Before sending a log, look at its `GET_CONFIG_RESP` lines (the camera's settings reply): if one doesn't end with "Wi-Fi password hidden", that log came from an older build and contains the password, so install the newest build and don't send that log. The log still contains the camera's serial number, so send it here rather than posting it in a public place such as a GitHub issue; the repository is public.
 
 A format for the notes, if it helps:
 ```
