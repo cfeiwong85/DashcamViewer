@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 An iOS (SwiftUI, iOS 17+) replacement for **LogonT**, the discontinued app for the **Eurostyle T8** Wi-Fi dashcam (front and rear). The app shows live video, browses and plays recordings, saves clips to the iPhone, and changes camera settings. Public GitHub repo: `cfeiwong85/DashcamViewer`.
 
-`PLAN.md` holds the approved plan, the user's interview decisions and a progress table; read it before starting a phase. Phases 1-6 are built and green in CI. Phase 7 is in progress: `docs/INSTALL_SIDESTORE.md` is written; `docs/CAR_TEST_CHECKLIST.md` and the in-car testing (which needs the user) remain. Nothing has run against the real camera yet, so the "Open items" in `research/T8_PROTOCOL.md` are still unconfirmed. `HANDOFF.md` describes the state when work moved to the cloud.
+`PLAN.md` holds the approved plan, the user's interview decisions and a progress table; read it before starting a phase. Phases 1-6 are built and green in CI. Phase 7 is in progress: `docs/INSTALL_SIDESTORE.md` and `docs/CAR_TEST_CHECKLIST.md` are written; the in-car testing (which needs the user) remains. Nothing has run against the real camera yet, so the "Open items" in `research/T8_PROTOCOL.md` are still unconfirmed. `HANDOFF.md` describes the state when work moved to the cloud.
 
 ## Commands
 The user's Mac has only the Swift 6.0.3 Command Line Tools (no Xcode, no Homebrew, no `gh`), so the app is built and tested only in CI. A Linux cloud container may need Swift 6.0.3 installed from swift.org first (CI uses the `swift:6.0.3-noble` image).
@@ -48,7 +48,7 @@ The integration tests allow 20 s per reply. In CI, `t8sim` shares the runner wit
 - `DashcamViewer/` (SwiftUI app, iOS 17+, no dependencies, Swift 5 language mode; `project.yml` says why): `App` (AppModel, Network.framework transport, tabs), `Live`, `Recordings` (list, streamed playback), `Library` (saved copies, Photos), `Settings`, `Diagnostics`, `Media` (AVSampleBufferDisplayLayer renderer, PCM player, AVAssetWriter MP4 export).
 - `DashcamViewerTests/` (XCTest): VideoToolbox/MP4 tests and integration tests against `t8sim`.
 - `project.yml`: XcodeGen spec. The test bundle links only the `T8Kit` product; linking `T8SimulatorKit` too would put a second static copy of T8Kit into it (a past CI failure).
-- `docs/`: guides for the user. `INSTALL_SIDESTORE.md` gives the SideStore, iloader and LocalDevVPN steps as checked on 2026-11-22. SideStore changes often, so re-check docs.sidestore.io (and the iloader and SideStore source where the docs are silent) before editing it.
+- `docs/`: guides for the user. `INSTALL_SIDESTORE.md` gives the SideStore, iloader and LocalDevVPN steps as checked on 2026-11-22. SideStore changes often, so re-check docs.sidestore.io (and the iloader and SideStore source where the docs are silent) before editing it. `CAR_TEST_CHECKLIST.md` is one test round with step IDs (B1, C2, …) that the user reports results against; it quotes the app's button labels and messages, so update it when that UI text changes.
 
 **How the pieces connect:**
 - T8Kit reaches sockets only through `T8Connector`/`T8Connection` (`Transport.swift`). `POSIXConnector` serves Linux, macOS, the tests and the simulator. The app supplies `NWConnector` (`App/NWTransport.swift`), which pins camera traffic to Wi-Fi except when the target is the simulator. The app's integration tests run the real `NWConnector` against `t8sim`.
