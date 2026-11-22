@@ -25,9 +25,13 @@ final class IntegrationTests: XCTestCase {
         super.tearDown()
     }
 
+    /// In CI, t8sim shares the machine with the iOS Simulator. In run 44995587731 it read a request about
+    /// 10 s after the request arrived, while the iOS Simulator was busy, so these limits sit well above
+    /// the app's defaults (5 s and 8 s, meant for the real camera). A missing reply still fails, only later.
     private func makeSession() -> T8ControlSession {
         var options = T8ControlSession.Options(address: address)
-        options.replyTimeout = .seconds(5)
+        options.replyTimeout = .seconds(20)
+        options.fileListPageTimeout = .seconds(20)
         return T8ControlSession(connector: NWConnector(requireWiFi: false), options: options, log: log)
     }
 

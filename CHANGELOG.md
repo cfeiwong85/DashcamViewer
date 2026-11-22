@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 (CI: integration-test time limits)
+- CI run 44995587731 (commit ea9b64e, documentation only) failed `IntegrationTests.testListDownloadAndExport` with "No reply from the camera to NET_CONNECT_STATE." The logs show the cause: the test's request was in `t8sim`'s socket at 06:57:31.5, but `t8sim` accepted the connection 2.4 s later and read the request 9.9 s later, after the test's 5 s limit. During the same 20 seconds it took 1 s to answer an ordinary request that the next test got answered in 1 ms. The iOS-side test process stayed fast throughout. `t8sim` does no blocking or heavy work on Swift's task threads, so it was starved for CPU on the shared runner while the iOS Simulator was busy; the code behaved correctly but slowly.
+- `DashcamViewerTests/IntegrationTests.swift`: the session's reply and file-list page limits are now 20 s in these tests (they were 5 s and the 8 s default). The app's own limits for the real camera are unchanged. A missing reply still fails the test, only later.
+
 ## 2026-11-22 (phase 7: SideStore install guide)
 - Added `docs/INSTALL_SIDESTORE.md`: one-time setup (LocalDevVPN on the iPhone, iloader on the Mac, SideStore install, trusting the developer app, Developer Mode, first refresh), downloading the `.ipa` artifact from Actions, installing it from SideStore's My Apps, first launch (Local Network permission), the 7-day refresh, installing newer builds without losing saved clips, the free-account limits, and troubleshooting (connection errors, pairing file replacement, sign-in).
 - Checked against the official SideStore docs (prerequisites, install, pairing file, FAQ, troubleshooting), iloader 2.4.2's source ("SideStore (Stable)" downloads SideStore's latest GitHub release) and SideStore's source at tag 0.7.0-alpha (the **+** button in My Apps opens a Files picker for `.ipa` files). SideStore now installs with iloader and LocalDevVPN, not AltServer.
