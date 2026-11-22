@@ -325,11 +325,17 @@ struct EndToEndTests {
         try await Self.withSimulator { simulator, address in
             let session = Self.session(address)
             try await session.connect()
+            #expect(try await session.readConfig().wifiPassword == "12345678")
             let gone = Task { await Self.waitForEvent(session) { if case .disconnected = $0 { true } else { false } } }
             try await session.setWiFiPassword("newpass9")
             #expect(await simulator.stats.wifiPassword == "newpass9")
             #expect(await simulator.config.wifiPassword == "newpass9")
             #expect(await gone.value)
+            // The shared log hides both passwords; parsing above still saw the real one.
+            let log = session.log.exportText()
+            #expect(!log.contains(T8Bytes.hex(Array("12345678".utf8))))
+            #expect(!log.contains(T8Bytes.hex(Array("newpass9".utf8))))
+            #expect(log.components(separatedBy: "Wi-Fi password hidden").count - 1 >= 2)
         }
     }
 
