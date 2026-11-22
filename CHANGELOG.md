@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-22 (phase 7: SideStore install guide)
+- Added `docs/INSTALL_SIDESTORE.md`: one-time setup (LocalDevVPN on the iPhone, iloader on the Mac, SideStore install, trusting the developer app, Developer Mode, first refresh), downloading the `.ipa` artifact from Actions, installing it from SideStore's My Apps, first launch (Local Network permission), the 7-day refresh, installing newer builds without losing saved clips, the free-account limits, and troubleshooting (connection errors, pairing file replacement, sign-in).
+- Checked against the official SideStore docs (prerequisites, install, pairing file, FAQ, troubleshooting), iloader 2.4.2's source ("SideStore (Stable)" downloads SideStore's latest GitHub release) and SideStore's source at tag 0.7.0-alpha (the **+** button in My Apps opens a Files picker for `.ipa` files). SideStore now installs with iloader and LocalDevVPN, not AltServer.
+- `PLAN.md`: phase 7 status; the refresh risk now says Wi-Fi with internet and LocalDevVPN are needed (SideStore's docs say mobile data is not suitable), which corrects "home Wi-Fi or cellular".
+
 ## 2026-11-22 (/init after phases 1-6)
 - Updated `CLAUDE.md` for the code as it now stands:
   - Status: phases 1-6 done, phase 7 next.
