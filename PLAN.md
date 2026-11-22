@@ -7,8 +7,8 @@
 | 1. Protocol gaps | ✔ Live video = TCP 7778 (disassembled); folders 0-3 mapped; **no camera-side delete exists in LogonT** (its swipe-to-delete removes the phone's copy). See `research/T8_PROTOCOL.md` rev. 2 |
 | 2. T8Kit | ✔ `T8Kit/` package, tests with LogonT byte vectors |
 | 3. Simulator | ✔ `swift run t8sim` with fault injection; end-to-end tests |
-| 4. iOS app | PHASE4_STATUS |
-| 5. CI | PHASE5_STATUS |
+| 4. iOS app | Built (SwiftUI, no dependencies); tested in CI on the iOS Simulator against `t8sim`; not yet run on the real camera |
+| 5. CI | `.github/workflows/ci.yml`: T8Kit tests (Linux + macOS), XcodeGen, iOS Simulator tests, unsigned `.ipa` artifact on green runs (Actions › CI › Artifacts) |
 | 6. Review | ✔ 23 Haiku reviewers, verified fixes in `research/REVIEW_PHASE6.md` |
 | 7. In-car testing | Next: install via SideStore, then test in the car (needs you) |
 
