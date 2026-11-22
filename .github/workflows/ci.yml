@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  t8kit-linux:
+    name: T8Kit on Linux (Swift 6.0, same compiler as the Mac's Command Line Tools)
+    runs-on: ubuntu-24.04
+    container: swift:6.0.3-noble
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: swift test
+        working-directory: T8Kit
+        run: swift test
+
+  ios:
+    name: iOS app (build, test against the T8 simulator, unsigned IPA)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the newest Xcode 26 (iOS 26 SDK)
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i ios
+
+      - name: T8Kit tests on macOS
+        working-directory: T8Kit
+        run: swift test
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Start the T8 simulator
+        working-directory: T8Kit
+        run: |
+          swift build -c release --product t8sim
+          nohup .build/release/t8sim --host 127.0.0.1 --port 17777 --heartbeat 2 --clip-seconds 2 > "$RUNNER_TEMP/t8sim.log" 2>&1 &
+          sleep 2
+          nc -z 127.0.0.1 17777 && echo "t8sim is listening"
+
+      - name: App tests on the iOS Simulator (integration tests use the T8 simulator)
+        env:
+          TEST_RUNNER_T8SIM_HOST: 127.0.0.1
+          TEST_RUNNER_T8SIM_PORT: "17777"
+        run: |
+          set -o pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          for runtime in sorted(devices, reverse=True):
+              if "iOS" in runtime:
+                  for d in devices[runtime]:
+                      if d["name"].startswith("iPhone"):
+                          print(d["udid"]); sys.exit(0)
+          sys.exit("no iPhone simulator")')
+          echo "Simulator $UDID"
+          xcodebuild test \
+            -project DashcamViewer.xcodeproj \
+            -scheme DashcamViewer \
+            -destination "id=$UDID" \
+            -resultBundlePath "$RUNNER_TEMP/Tests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO | tee "$RUNNER_TEMP/test.log" | grep -E "error:|warning: unre|Test Case|Executed|\*\* TEST" || true
+          grep -q "\*\* TEST SUCCEEDED \*\*" "$RUNNER_TEMP/test.log"
+
+      - name: Build the unsigned IPA
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project DashcamViewer.xcodeproj \
+            -scheme DashcamViewer \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} | tail -20
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/DashcamViewer.app Payload/
+          zip -qry DashcamViewer.ipa Payload
+          ls -l DashcamViewer.ipa
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: DashcamViewer-unsigned-ipa
+          path: DashcamViewer.ipa
+          retention-days: 30
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-logs
+          path: |
+            ${{ runner.temp }}/t8sim.log
+            ${{ runner.temp }}/test.log
+            ${{ runner.temp }}/Tests.xcresult
+          if-no-files-found: ignore
