@@ -11,7 +11,8 @@ struct LogExport: Transferable {
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .plainText) { export in
             let stamp = Int(Date().timeIntervalSince1970)
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("DashcamViewer-log-\(stamp).txt")
+            let unique = UUID().uuidString.prefix(8)
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("DashcamViewer-log-\(stamp)-\(unique).txt")
             try export.log.exportText(header: export.header).write(to: url, atomically: true, encoding: .utf8)
             return SentTransferredFile(url)
         }
@@ -152,10 +153,16 @@ struct DiagnosticsView: View {
     private func testPort() async {
         checking = true
         defer { checking = false }
-        if app.state.isConnected {
+        switch app.state {
+        case .connected:
             portCheck = true
             portDetail = "A session is open, so the port works."
             return
+        case .connecting:
+            portDetail = "A connection attempt is running; try again in a moment."
+            return
+        case .disconnected, .failed:
+            break
         }
         let address = app.target.address
         do {

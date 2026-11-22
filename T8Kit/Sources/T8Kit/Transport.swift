@@ -60,8 +60,9 @@ public struct T8Address: Hashable, Sendable {
 
     public static let camera = T8Address()
 
-    /// The simulator listens on `base`, `base + 1`, `base + 2`.
+    /// The simulator listens on `base`, `base + 1`, `base + 2` (base is capped at 65533).
     public static func simulator(host: String = "127.0.0.1", basePort: UInt16) -> T8Address {
-        T8Address(host: host, controlPort: basePort, videoPort: basePort + 1, audioPort: basePort + 2)
+        let base = min(basePort, UInt16.max - 2)
+        return T8Address(host: host, controlPort: base, videoPort: base + 1, audioPort: base + 2)
     }
 }

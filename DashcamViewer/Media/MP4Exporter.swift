@@ -20,12 +20,15 @@ struct MP4ExportResult {
     let url: URL
     let videoFrames: Int
     let audioSeconds: Double
+    /// Access units that could not be wrapped in a sample buffer (normally 0).
+    let skippedFrames: Int
 }
 
 /// Muxes the camera's raw streams into an .mp4: H.264 passed through unchanged, PCM encoded
 /// to AAC. This replaces LogonT's mp4parser + MediaCodec path (MainMP4ParSer.java).
 enum MP4Exporter {
     static func export(h264 videoURL: URL, pcm audioURL: URL?, framesPerSecond: Int, to output: URL) async throws -> MP4ExportResult {
+        guard framesPerSecond > 0 else { throw MP4ExportError.cannotCreateWriter("invalid frame rate \(framesPerSecond)") }
         try? FileManager.default.removeItem(at: output)
         var video = try AccessUnitFileReader(url: videoURL)
 
@@ -71,12 +74,38 @@ enum MP4Exporter {
         }
 
         guard writer.startWriting() else {
+            try? FileManager.default.removeItem(at: output)
             throw MP4ExportError.writerFailed(writer.error?.localizedDescription ?? "startWriting")
         }
+        do {
+            return try await write(
+                writer: writer, videoInput: videoInput, audioInput: audioInput, format: format,
+                first: first, video: &video, audio: &audio, framesPerSecond: framesPerSecond, output: output
+            )
+        } catch {
+            // Never leave a half-written file behind (it would show up in the Saved list).
+            if writer.status == .writing { writer.cancelWriting() }
+            try? FileManager.default.removeItem(at: output)
+            throw error
+        }
+    }
+
+    private static func write(
+        writer: AVAssetWriter,
+        videoInput: AVAssetWriterInput,
+        audioInput: AVAssetWriterInput?,
+        format: CMVideoFormatDescription,
+        first: H264AccessUnit,
+        video: inout AccessUnitFileReader,
+        audio: inout PCMFileReader?,
+        framesPerSecond: Int,
+        output: URL
+    ) async throws -> MP4ExportResult {
         writer.startSession(atSourceTime: .zero)
 
         let frameDuration = CMTime(value: 1, timescale: CMTimeScale(framesPerSecond))
         var frameIndex = 0
+        var skippedFrames = 0
         var pendingVideo: H264AccessUnit? = first
         var audioSamples = 0
         var videoDone = false
@@ -106,6 +135,8 @@ enum MP4Exporter {
                         throw MP4ExportError.writerFailed(writer.error?.localizedDescription ?? "video append")
                     }
                     frameIndex += 1
+                } else {
+                    skippedFrames += 1
                 }
                 pendingVideo = try video.next()
             } else if let input = audioInput {
@@ -132,7 +163,10 @@ enum MP4Exporter {
         guard writer.status == .completed else {
             throw MP4ExportError.writerFailed(writer.error?.localizedDescription ?? "status \(writer.status.rawValue)")
         }
-        return MP4ExportResult(url: output, videoFrames: frameIndex, audioSeconds: Double(audioSamples) / Double(T8PCM.sampleRate))
+        return MP4ExportResult(
+            url: output, videoFrames: frameIndex,
+            audioSeconds: Double(audioSamples) / Double(T8PCM.sampleRate), skippedFrames: skippedFrames
+        )
     }
 }
 

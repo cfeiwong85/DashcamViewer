@@ -227,7 +227,7 @@ public struct H264SPSInfo: Hashable, Sendable {
                         var next: Int32 = 8
                         for _ in 0..<size where next != 0 {
                             guard let delta = r.se() else { return nil }
-                            next = (last + delta + 256) % 256
+                            next = (last &+ delta &+ 256) % 256
                             if next != 0 { last = next }
                         }
                     }
@@ -253,9 +253,13 @@ public struct H264SPSInfo: Hashable, Sendable {
         }
         let cropUnitX: UInt32 = chromaFormat == 0 || chromaFormat == 3 ? 1 : 2
         let cropUnitY: UInt32 = (chromaFormat == 1 ? 2 : 1) * (2 - frameMbsOnly)
-        profile = UInt8(profileIDC)
-        level = UInt8(levelIDC)
-        width = Int((widthMbs + 1) * 16 - cropUnitX * (cropLeft + cropRight))
-        height = Int((2 - frameMbsOnly) * (heightMapUnits + 1) * 16 - cropUnitY * (cropTop + cropBottom))
+        // 64-bit arithmetic so a malformed SPS cannot overflow; reject impossible sizes.
+        let w = (Int64(widthMbs) + 1) * 16 - Int64(cropUnitX) * (Int64(cropLeft) + Int64(cropRight))
+        let h = Int64(2 - frameMbsOnly) * (Int64(heightMapUnits) + 1) * 16 - Int64(cropUnitY) * (Int64(cropTop) + Int64(cropBottom))
+        guard w > 0, h > 0, w <= 16384, h <= 16384 else { return nil }
+        profile = UInt8(truncatingIfNeeded: profileIDC)
+        level = UInt8(truncatingIfNeeded: levelIDC)
+        width = Int(w)
+        height = Int(h)
     }
 }

@@ -8,26 +8,41 @@ final class RecordingsModel {
     var lists: [T8Folder: [T8Recording]] = [:]
     var incomplete: Set<T8Folder> = []
     var loading = false
-    var error: String?
+    var errors: [T8Folder: String] = [:]
 
+    /// Loads the selected folder. One request at a time: the camera serves one thing at once.
+    /// If the user switches folders meanwhile, the new folder is loaded right after.
     func load(app: AppModel, force: Bool = false) async {
-        let folder = self.folder
+        guard !loading else { return }
+        var folder = self.folder
         guard force || lists[folder] == nil else { return }
         guard app.activity == .idle else {
-            error = "Stop the live view, playback or download first."
+            errors[folder] = app.activity.busyMessage
             return
         }
         loading = true
-        error = nil
-        defer { loading = false }
+        app.activity = .listing
+        defer {
+            loading = false
+            if app.activity == .listing { app.activity = .idle }
+        }
+        while true {
+            await fetch(folder, app: app)
+            guard self.folder != folder, lists[self.folder] == nil else { break }
+            folder = self.folder
+        }
+    }
+
+    private func fetch(_ folder: T8Folder, app: AppModel) async {
+        errors[folder] = nil
         do {
             let session = try await app.connectedSession()
             let result = try await session.listRecordings(in: folder)
-            // Newest first, like LogonT's default sort; indexes stay the camera's.
+            // Newest first, like LogonT's default sort; each recording keeps the camera's own index.
             lists[folder] = result.recordings.reversed()
             if result.isComplete { incomplete.remove(folder) } else { incomplete.insert(folder) }
         } catch {
-            self.error = AppModel.message(for: error)
+            errors[folder] = AppModel.message(for: error)
         }
     }
 }
@@ -104,7 +119,7 @@ struct RecordingsView: View {
                     Text("Loading the file list…")
                 }
             }
-            if let error = model.error {
+            if let error = model.errors[model.folder] {
                 Text(error).foregroundStyle(.red)
             }
             if let recordings = model.lists[model.folder] {

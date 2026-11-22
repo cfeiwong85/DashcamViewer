@@ -25,13 +25,16 @@ struct SettingsView: View {
                         Text("T8 simulator on a Mac").tag(true)
                     }
                     if app.target.useSimulator {
-                        TextField("Mac's IP address", text: $app.target.simulatorHost)
+                        TextField("Mac's IP address", text: Binding(
+                            get: { app.target.simulatorHost },
+                            set: { app.target.simulatorHost = $0.trimmingCharacters(in: .whitespaces) }
+                        ))
                             .keyboardType(.numbersAndPunctuation)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                         TextField("Port", text: Binding(
                             get: { String(app.target.simulatorPort) },
-                            set: { if let port = UInt16($0) { app.target.simulatorPort = port } }
+                            set: { if let port = UInt16($0), (1...(UInt16.max - 2)).contains(port) { app.target.simulatorPort = port } }
                         ))
                         .keyboardType(.numberPad)
                     }
@@ -118,6 +121,7 @@ struct SettingsView: View {
             Picker(setting.title, selection: Binding(
                 get: { current },
                 set: { index in
+                    guard index != current else { return }
                     if setting.warning != nil {
                         pending = PendingChange(setting: setting, index: index)
                     } else {
@@ -184,16 +188,14 @@ struct WiFiPasswordView: View {
 
     private var problem: String? {
         if password.isEmpty { return nil }
-        do {
+        do throws(T8WiFiPasswordError) {
             try T8WiFiPassword.validate(password)
-        } catch let error as T8WiFiPasswordError {
+        } catch {
             switch error {
             case .wrongLength: return "The password must be exactly 8 characters."
             case .containsSpace: return "The password cannot contain spaces."
             case .notASCII: return "Use only letters, digits and symbols from a standard keyboard."
             }
-        } catch {
-            return "Invalid password."
         }
         if !confirmation.isEmpty && confirmation != password { return "The two passwords do not match." }
         return nil

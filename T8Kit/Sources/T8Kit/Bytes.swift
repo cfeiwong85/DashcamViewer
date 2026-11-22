@@ -5,8 +5,8 @@ import Foundation
 public enum T8Bytes {
     public static func u32LE<C: RandomAccessCollection>(_ bytes: C, at offset: Int) -> UInt32?
     where C.Element == UInt8, C.Index == Int {
+        guard offset >= 0, offset <= bytes.count - 4 else { return nil }
         let start = bytes.startIndex + offset
-        guard offset >= 0, start + 4 <= bytes.endIndex else { return nil }
         return UInt32(bytes[start])
             | UInt32(bytes[start + 1]) << 8
             | UInt32(bytes[start + 2]) << 16
@@ -20,8 +20,8 @@ public enum T8Bytes {
 
     public static func u16BE<C: RandomAccessCollection>(_ bytes: C, at offset: Int) -> UInt16?
     where C.Element == UInt8, C.Index == Int {
+        guard offset >= 0, offset <= bytes.count - 2 else { return nil }
         let start = bytes.startIndex + offset
-        guard offset >= 0, start + 2 <= bytes.endIndex else { return nil }
         return UInt16(bytes[start]) << 8 | UInt16(bytes[start + 1])
     }
 

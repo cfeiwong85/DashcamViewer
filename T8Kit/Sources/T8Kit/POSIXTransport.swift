@@ -82,7 +82,9 @@ public enum POSIXSocket {
         defer { if !success { _ = close(fd) } }
 
         let flags = fcntl(fd, F_GETFL, 0)
-        _ = fcntl(fd, F_SETFL, flags | O_NONBLOCK)
+        guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+            throw T8TransportError.io("fcntl(): \(errorText())")
+        }
         var addr = sockaddrIn(address: address, port: port)
         let result = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -100,17 +102,27 @@ public enum POSIXSocket {
             }
             var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
             let millis = Int32(clamping: timeout.components.seconds * 1000 + timeout.components.attoseconds / 1_000_000_000_000_000)
-            let ready = poll(&pfd, 1, max(millis, 1))
-            if ready == 0 { throw T8TransportError.connectTimedOut(host: host, port: port) }
+            let deadline = ContinuousClock.now + timeout
+            var ready: Int32
+            repeat {
+                let remaining = deadline - ContinuousClock.now
+                let wait = Int32(clamping: max(1, remaining.components.seconds * 1000 + remaining.components.attoseconds / 1_000_000_000_000_000))
+                ready = poll(&pfd, 1, min(wait, max(millis, 1)))
+            } while ready < 0 && errno == EINTR && ContinuousClock.now < deadline
+            if ready == 0 || (ready < 0 && errno == EINTR) { throw T8TransportError.connectTimedOut(host: host, port: port) }
             if ready < 0 { throw T8TransportError.connectFailed(host: host, port: port, reason: errorText()) }
             var soError: Int32 = 0
             var length = socklen_t(MemoryLayout<Int32>.size)
-            getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &length)
+            guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &length) == 0 else {
+                throw T8TransportError.connectFailed(host: host, port: port, reason: "getsockopt(): \(errorText())")
+            }
             if soError != 0 {
                 throw T8TransportError.connectFailed(host: host, port: port, reason: errorText(soError))
             }
         }
-        _ = fcntl(fd, F_SETFL, flags & ~O_NONBLOCK)
+        guard fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == 0 else {
+            throw T8TransportError.io("fcntl(): \(errorText())")
+        }
         setNoDelay(fd)
         success = true
         return fd

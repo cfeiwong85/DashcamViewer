@@ -88,7 +88,7 @@ public struct T8PacketParser: Sendable {
             let command = T8Command(commandRaw)
             let length = Int(declared)
 
-            if legacyShortFrameCommands.contains(command), length > 0,
+            if legacyShortFrameCommands.contains(command), length > 0, !hasValidFullFrame(length: length),
                let short = shortFrame(command: command, declaredLength: length) {
                 return short
             }
@@ -108,6 +108,14 @@ public struct T8PacketParser: Sendable {
             return .packet(T8Packet(head: head, command: command, payload: payload), warnings: warnings)
         }
         return nil
+    }
+
+    /// True when the whole declared frame is buffered and its trailer and checksum are right.
+    private func hasValidFullFrame(length: Int) -> Bool {
+        let total = T8Packet.headerLength + length + 2
+        guard buffer.count - start >= total else { return false }
+        let trailerIndex = start + T8Packet.headerLength + length
+        return buffer[trailerIndex] == T8Packet.trailer && buffer[trailerIndex + 1] == T8Bytes.xor(buffer[start...trailerIndex])
     }
 
     /// Accepts `[header][k payload bytes][0x03][xor]` for some k shorter than the declared length,

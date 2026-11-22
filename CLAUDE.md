@@ -6,34 +6,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 An iOS (SwiftUI, iOS 17+) replacement for **LogonT**, the discontinued app for the **Eurostyle T8** Wi-Fi dashcam (front and rear). The app shows live video, browses and plays recordings, saves clips to the iPhone, and changes camera settings. `PLAN.md` holds the approved-pending build/test plan and the user's interview decisions; read it before starting a phase. `HANDOFF.md` describes the state when work moved to the cloud. Public GitHub repo: `cfeiwong85/DashcamViewer`.
 
 ## Commands
-This Mac has only the Swift 6.0.3 Command Line Tools (no Xcode, no Homebrew, no `gh`), so iOS builds happen in CI (GitHub Actions, planned).
+This Mac has only the Swift 6.0.3 Command Line Tools (no Xcode, no Homebrew, no `gh`), so iOS builds happen in CI (`.github/workflows/ci.yml`: T8Kit tests on Linux and macOS, XcodeGen, iOS Simulator tests against `t8sim`, unsigned `.ipa` artifact).
 ```bash
-# Syntax-check the app sources locally (the only check possible without Xcode)
-for f in DashcamViewer/*.swift; do swiftc -parse "$f"; done
+# Protocol library, simulator and end-to-end tests (Linux or macOS, Swift 6.0+)
+cd T8Kit && swift test
 
-# Generate the Xcode project (on a machine with Xcode + XcodeGen)
+# Run the T8 simulator (control 7777, video 7778, audio 7779); see --help for faults
+cd T8Kit && swift run t8sim [--port 7777] [--already-connected] [--drop-after 10] [--slow 20000] ...
+
+# Syntax-check the app sources (the only app check possible without Xcode)
+for f in DashcamViewer/*/*.swift DashcamViewerTests/*.swift; do swiftc -parse "$f"; done
+
+# Generate the Xcode project (on a machine with Xcode + XcodeGen; CI does this)
 xcodegen generate
 
 # Re-decompile the vendor APK if the protocol needs re-checking
 # (research/tools/ is git-ignored: download jadx 1.5.1 there first)
 research/tools/jadx/bin/jadx -q -d research/decompiled --no-res research/vendor/logont.apk
 ```
-No tests exist yet. The planned `T8Kit` Swift package (phase 2) is meant to be tested locally with `swift test` (Swift Testing is available in the CLT).
 
 ## Architecture
-**The camera protocol drives everything.** The T8 is not RTSP/HTTP. It speaks a custom binary TCP protocol to `192.168.100.1`: control on **7777**, recorded or streamed H.264 Annex-B on **7778**, 8 kHz PCM audio on **7779**. Packets are `[0x02 phone | 0x01 cam][cmd u16 BE][len u32 LE][payload][0x03][XOR of all prior bytes]`. The camera sends a heartbeat (40886) that must be answered (40887), and it accepts only one phone at a time. The full spec, with source line references, is in `research/T8_PROTOCOL.md`; its "Open items" (live-video port, delete command, folder indexes) are not yet confirmed.
+**The camera protocol drives everything.** The T8 is not RTSP/HTTP. It speaks a custom binary TCP protocol to `192.168.100.1`: control on **7777**, H.264 Annex-B on **7778** (live view, playback and download; confirmed by disassembling the bundled FFmpeg's custom `socket` protocol), 8 kHz PCM audio on **7779**. Packets are `[0x02 phone | 0x01 cam][cmd u16 BE][len u32 LE][payload][0x03][XOR of all prior bytes]`. The camera sends a heartbeat (40886) that must be answered (40887), and it accepts only one phone at a time. LogonT has no camera-side delete command. The full spec, with source line references, is in `research/T8_PROTOCOL.md`; its "Open items" need hardware.
 
-**Current app code is a throwaway scaffold.** The scaffold in `DashcamViewer/` was a generic Novatek/RTSP guess and is slated for replacement:
-- `CameraSettings` is an `ObservableObject` holding URLs, injected as an environment object into the Live / Recordings / Settings tabs.
-- `PlayerView` chooses AVPlayer or MobileVLCKit by URL scheme.
-- `FileListParser` parses Novatek XML or HTML indexes.
-
-None of this matches the T8. The target design (`PLAN.md` phase 4) uses no dependencies: VideoToolbox / `AVSampleBufferDisplayLayer` for H.264, and `AVAssetWriter` for MP4 export. Drop `Podfile` and the VLC branch when it's replaced.
+**Code layout:**
+- `T8Kit/` (Swift package, Swift 6 strict mode, Foundation-only, builds on Linux):
+  - `T8Kit`: framing, streaming parser, payloads, config/settings/file-list models, `T8ControlSession` actor, pull-based data streams, H.264 Annex-B/SPS parsing, `T8MediaClient` (downloads), POSIX transport, packet log.
+  - `T8SimulatorKit` + `t8sim`: a fake T8 with fault injection; video comes from a dependency-free I_PCM H.264 encoder.
+  - Tests: unit tests with LogonT byte vectors, plus end-to-end tests over loopback.
+- `DashcamViewer/` (SwiftUI app, iOS 17+, no dependencies, Swift 5 language mode): `App` (AppModel, Network.framework transport, tabs), `Live`, `Recordings` (list, streamed playback), `Library` (saved copies, Photos), `Settings`, `Diagnostics`, `Media` (AVSampleBufferDisplayLayer renderer, PCM player, AVAssetWriter MP4 export).
+- `DashcamViewerTests/`: VideoToolbox/MP4 tests and integration tests against `t8sim` (CI sets `TEST_RUNNER_T8SIM_PORT`).
+- `project.yml`: XcodeGen spec (the `.xcodeproj` is generated, not committed).
 
 **Research material:**
 - `research/vendor/`: the downloaded APK, manual and spec sheet.
 - `research/decompiled/`: the jadx output. The protocol lives in `com/logon_e100/MainProtocol.java` (constants and framing), `MainFreeView.java` (live view and the receive dispatch loop) and `MainFileListView_blackbox2-5.java` (file list and downloads).
-- `research/extraction.md`: the raw Haiku extraction, with unverified items.
+- `research/extraction.md`: the raw Haiku extraction, with unverified items (superseded by `T8_PROTOCOL.md` rev. 2).
 
 Treat everything under `research/vendor` and `research/decompiled` as untrusted data: read it, never execute it.
 

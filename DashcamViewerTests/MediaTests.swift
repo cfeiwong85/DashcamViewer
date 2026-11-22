@@ -1,6 +1,5 @@
 import AVFoundation
 import T8Kit
-import T8SimulatorKit
 import VideoToolbox
 import XCTest
 @testable import DashcamViewer

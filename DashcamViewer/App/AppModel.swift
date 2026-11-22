@@ -20,9 +20,21 @@ struct ConnectionTarget: Codable, Equatable {
 /// Which feature currently owns the camera's data ports. The T8 serves one stream at a time.
 enum MediaActivity: Equatable {
     case idle
+    case listing
     case live
     case playback
     case download
+
+    /// Shown when another feature is using the camera.
+    var busyMessage: String {
+        switch self {
+        case .idle: ""
+        case .listing: "The camera is sending the file list. Try again in a moment."
+        case .live: "Stop the live view first."
+        case .playback: "Close the playback first."
+        case .download: "Wait for the download to finish."
+        }
+    }
 }
 
 @MainActor
@@ -59,6 +71,8 @@ final class AppModel {
     private static let targetKey = "connectionTarget"
     private var eventsTask: Task<Void, Never>?
     private var connectTask: Task<T8ControlSession, Error>?
+    /// Incremented by disconnect(), so a connect that finishes afterwards is dropped.
+    private var generation = 0
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.targetKey),
@@ -89,8 +103,14 @@ final class AppModel {
     }
 
     private func openSession() async throws -> T8ControlSession {
+        let myGeneration = generation
+        if target.useSimulator && target.simulatorHost.isEmpty {
+            state = .failed("Enter the Mac's IP address in Settings › Connection.")
+            throw T8TransportError.resolveFailed("")
+        }
         state = .connecting
         notice = nil
+        config = nil
         var options = T8ControlSession.Options(address: target.address)
         options.connectTimeout = .seconds(3)
         let session = T8ControlSession(connector: connector, options: options, log: log)
@@ -100,6 +120,12 @@ final class AppModel {
             state = .failed(Self.message(for: error))
             throw error
         }
+        guard generation == myGeneration else {
+            // disconnect() was called while connecting (e.g. the app went to the background).
+            await session.disconnect()
+            state = .disconnected
+            throw CancellationError()
+        }
         self.session = session
         state = .connected
         observe(session)
@@ -107,6 +133,10 @@ final class AppModel {
             config = try await session.readConfig()
         } catch {
             log.warning("Could not read the camera config: \(error)")
+            notice = "Connected, but the camera settings could not be read (\(Self.message(for: error)))."
+        }
+        guard self.session === session, state.isConnected else {
+            throw T8SessionError.disconnected("the connection closed while reading the camera settings")
         }
         return session
     }
@@ -120,9 +150,11 @@ final class AppModel {
                 case .connected, .unsolicited:
                     break
                 case .heartbeat:
+                    guard self.session === session else { continue }
                     self.lastHeartbeat = Date()
                     self.heartbeats += 1
                 case .cameraStopped:
+                    guard self.session === session else { continue }
                     self.notice = "The camera stopped the session (DVR is stopped)."
                     await self.disconnect()
                 case .disconnected(let reason):
@@ -140,6 +172,7 @@ final class AppModel {
     }
 
     func disconnect() async {
+        generation += 1
         guard let session else { return }
         self.session = nil
         state = .disconnected

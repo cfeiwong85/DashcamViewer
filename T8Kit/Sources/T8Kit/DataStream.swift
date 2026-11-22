@@ -71,6 +71,8 @@ public struct T8DataStream: AsyncSequence, Sendable {
                 if bytes.isEmpty {
                     finished = true
                     box.close()
+                    // A cancelled read closes the socket; report it as cancellation, not as a complete stream.
+                    try Task.checkCancellation()
                     if box.timedOut {
                         let seconds = Int(stream.options.idleTimeout.components.seconds)
                         stream.log?.warning("Port \(stream.port): idle for \(seconds) s after \(box.total) bytes")
@@ -116,6 +118,9 @@ final class ConnectionBox: @unchecked Sendable {
     private let lock = NSLock()
     private var storedConnection: (any T8Connection)?
     private var didTimeOut = false
+    private var receiving = false
+    private var readGeneration = 0
+    /// Only touched from the iterator's serial next() calls.
     var total = 0
 
     var connection: (any T8Connection)? {
@@ -126,13 +131,26 @@ final class ConnectionBox: @unchecked Sendable {
     var timedOut: Bool { lock.withLock { didTimeOut } }
 
     func receive(from connection: any T8Connection, maximumLength: Int, idleTimeout: Duration) async throws -> [UInt8] {
+        let generation: Int = lock.withLock {
+            readGeneration += 1
+            receiving = true
+            return readGeneration
+        }
         let watchdog = Task { [weak self] in
             try? await Task.sleep(for: idleTimeout)
             guard !Task.isCancelled, let self else { return }
-            self.lock.withLock { self.didTimeOut = true }
-            connection.close()
+            // Fire only if this same read is still waiting, so a read that returned just in time is not killed.
+            let fire = self.lock.withLock { () -> Bool in
+                guard self.receiving, self.readGeneration == generation else { return false }
+                self.didTimeOut = true
+                return true
+            }
+            if fire { connection.close() }
         }
-        defer { watchdog.cancel() }
+        defer {
+            lock.withLock { receiving = false }
+            watchdog.cancel()
+        }
         return try await withTaskCancellationHandler {
             try await connection.receive(maximumLength: maximumLength)
         } onCancel: {

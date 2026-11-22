@@ -21,7 +21,8 @@ final class SavedLibrary {
     let directory: URL
 
     init() {
-        directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
         reload()
     }
 
@@ -87,7 +88,7 @@ final class TransferModel {
     func save(_ recording: T8Recording, channel: T8Channel, app: AppModel, alsoToPhotos: Bool) async {
         guard !isRunning else { return }
         guard app.activity == .idle else {
-            error = "Stop the live view or playback first."
+            error = app.activity.busyMessage
             return
         }
         isRunning = true
@@ -118,7 +119,7 @@ final class TransferModel {
                 status = "Converting to MP4…"
                 let output = app.library.uniqueURL(for: recording.fileStem(for: channel) + ".mp4")
                 let result = try await MP4Exporter.export(h264: file.videoURL, pcm: file.audioURL, framesPerSecond: channel.framesPerSecond, to: output)
-                app.log.info("Exported \(output.lastPathComponent): \(result.videoFrames) frames, \(String(format: "%.1f", result.audioSeconds)) s audio")
+                app.log.info("Exported \(output.lastPathComponent): \(result.videoFrames) frames, \(String(format: "%.1f", result.audioSeconds)) s audio, \(result.skippedFrames) skipped")
                 saved = output
             } else {
                 saved = app.library.uniqueURL(for: recording.name)

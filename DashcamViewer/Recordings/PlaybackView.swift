@@ -24,6 +24,8 @@ final class PlaybackModel {
     private var task: Task<Void, Never>?
     private var audioTask: Task<Void, Never>?
     private var player: PCMPlayer?
+    private var isSaving = false
+    private var cleanupRequested = false
     private let work = FileManager.default.temporaryDirectory.appendingPathComponent("playback-\(UUID().uuidString)")
     private var videoFile: URL { work.appendingPathComponent("video.h264") }
     private var audioFile: URL { work.appendingPathComponent("audio.pcm") }
@@ -31,7 +33,7 @@ final class PlaybackModel {
     func start(_ recording: T8Recording, channel: T8Channel, app: AppModel) {
         guard task == nil else { return }
         guard app.activity == .idle else {
-            phase = .failed("Stop the live view or download first.")
+            phase = .failed(app.activity.busyMessage)
             return
         }
         app.activity = .playback
@@ -42,8 +44,11 @@ final class PlaybackModel {
 
     private func run(_ recording: T8Recording, channel: T8Channel, app: AppModel) async {
         do {
+            try Task.checkCancellation()
             try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
             let session = try await app.connectedSession()
+            // Do not ask the camera for a transfer nobody will read.
+            try Task.checkCancellation()
             let start = try await session.startFileTransfer(recording, channel: channel)
             if let frames = start?.frameCount, frames > 0 { totalFrames = Int(frames) }
             // LogonT connects audio after 1.5 s and video after 2 s (MainFileFreeView.java:676-687).
@@ -56,6 +61,7 @@ final class PlaybackModel {
             if !recording.folder.isVideo {
                 var bytes: [UInt8] = []
                 for try await chunk in app.media.videoStream() { bytes += chunk }
+                try Task.checkCancellation()
                 try Data(bytes).write(to: videoFile)
                 photo = UIImage(data: Data(bytes))
                 phase = photo == nil ? .failed("The photo could not be read (\(bytes.count) bytes).") : .finished
@@ -75,13 +81,19 @@ final class PlaybackModel {
                     if due > .now { try await Task.sleep(until: due, clock: .continuous) }
                 } else {
                     clockStart = .now
-                    try? player?.start()
+                    do {
+                        try player?.start()
+                    } catch {
+                        app.log.warning("Audio playback could not start: \(error)")
+                    }
                 }
                 if renderer.enqueue(unit) {
                     phase = .playing
                 }
                 currentFrame += 1
             }
+            // Let the audio stream finish writing before Save is offered.
+            await audioTask?.value
             if !Task.isCancelled { phase = .finished }
         } catch is CancellationError {
         } catch {
@@ -95,7 +107,13 @@ final class PlaybackModel {
         let audioFile = self.audioFile
         let stream = app.media.audioChunks()
         audioTask = Task {
-            guard let writer = try? FileWriter(url: audioFile) else { return }
+            let writer: FileWriter
+            do {
+                writer = try FileWriter(url: audioFile)
+            } catch {
+                app.log.warning("Cannot create the audio file: \(error)")
+                return
+            }
             defer { writer.close() }
             do {
                 for try await chunk in stream {
@@ -119,7 +137,12 @@ final class PlaybackModel {
     }
 
     func save(_ recording: T8Recording, channel: T8Channel, app: AppModel, alsoToPhotos: Bool) async {
-        guard phase == .finished else { return }
+        guard phase == .finished, !isSaving else { return }
+        isSaving = true
+        defer {
+            isSaving = false
+            if cleanupRequested { removeWorkFolder() }
+        }
         saveStatus = "Saving…"
         do {
             let saved: URL
@@ -143,7 +166,16 @@ final class PlaybackModel {
         }
     }
 
+    /// Removes the temporary streams, or defers that until a running save has finished.
     func cleanUp() {
+        if isSaving {
+            cleanupRequested = true
+        } else {
+            removeWorkFolder()
+        }
+    }
+
+    private func removeWorkFolder() {
         try? FileManager.default.removeItem(at: work)
     }
 }

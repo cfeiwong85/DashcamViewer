@@ -36,10 +36,20 @@ func fail(_ message: String) -> Never {
 var args = Array(CommandLine.arguments.dropFirst())
 
 if args.first == "dump-video" {
-    guard args.count >= 3 else { fail("dump-video needs a camera and a file") }
-    let channel: T8Channel = args[1] == "rear" ? .rear : .front
+    guard args.count >= 3, !args[2].hasPrefix("--") else { fail("dump-video needs a camera (front or rear) and a file") }
+    let channel: T8Channel
+    switch args[1] {
+    case "front": channel = .front
+    case "rear": channel = .rear
+    default: fail("dump-video: the camera must be front or rear, not \(args[1])")
+    }
     var frames = 60
-    if let i = args.firstIndex(of: "--frames"), i + 1 < args.count, let n = Int(args[i + 1]) { frames = n }
+    if let i = args.firstIndex(of: "--frames") {
+        guard i + 1 < args.count, let n = Int(args[i + 1]), (1...100_000).contains(n) else {
+            fail("--frames needs a number from 1 to 100000")
+        }
+        frames = n
+    }
     let defaults = T8SimulatorOptions()
     let size = channel == .front ? defaults.frontSize : defaults.rearSize
     var encoder = TestPatternEncoder(width: size.width, height: size.height, channel: channel)
@@ -60,13 +70,13 @@ var quiet = false
 
 @MainActor
 func value(_ name: String) -> String {
-    guard !args.isEmpty else { fail("\(name) needs a value") }
+    guard let next = args.first, !next.hasPrefix("--") else { fail("\(name) needs a value") }
     return args.removeFirst()
 }
 
 @MainActor
 func seconds(_ name: String) -> Duration {
-    guard let s = Double(value(name)), s >= 0 else { fail("\(name) needs a number of seconds") }
+    guard let s = Double(value(name)), s.isFinite, s >= 0, s <= 86_400 else { fail("\(name) needs a number of seconds (0 to 86400)") }
     return .milliseconds(Int64(s * 1000))
 }
 
@@ -75,20 +85,20 @@ while !args.isEmpty {
     switch arg {
     case "--host": options.host = value(arg)
     case "--port":
-        guard let port = UInt16(value(arg)) else { fail("--port needs a number") }
+        guard let port = UInt16(value(arg)), port > 0, port <= UInt16.max - 2 else { fail("--port needs a number from 1 to 65533") }
         options.basePort = port
     case "--heartbeat":
         let text = value(arg)
         if text == "off" {
             options.heartbeatInterval = nil
-        } else if let s = Double(text), s > 0 {
+        } else if let s = Double(text), s.isFinite, s > 0, s <= 3600 {
             options.heartbeatInterval = .milliseconds(Int64(s * 1000))
         } else {
             fail("--heartbeat needs seconds or off")
         }
     case "--empty-heartbeat": options.heartbeatPayload = []
     case "--clip-seconds":
-        guard let n = Int(value(arg)), n > 0 else { fail("--clip-seconds needs a positive number") }
+        guard let n = Int(value(arg)), (1...600).contains(n) else { fail("--clip-seconds needs a number from 1 to 600") }
         options.clipSeconds = n
     case "--quiet": quiet = true
     case "--already-connected": options.faults.alreadyConnected = true
@@ -100,7 +110,7 @@ while !args.isEmpty {
         guard let n = Int(value(arg)), n > 0 else { fail("--slow needs bytes per second") }
         options.faults.bytesPerSecond = n
     case "--latency":
-        guard let ms = Int64(value(arg)), ms >= 0 else { fail("--latency needs milliseconds") }
+        guard let ms = Int64(value(arg)), (0...60_000).contains(ms) else { fail("--latency needs milliseconds (0 to 60000)") }
         options.faults.replyLatency = .milliseconds(ms)
     case "--camera-stop-after": options.faults.cameraStopAfter = seconds(arg)
     case "--stall-data-after":

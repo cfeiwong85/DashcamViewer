@@ -50,10 +50,10 @@ targets:
       - path: DashcamViewerTests
     dependencies:
       - target: DashcamViewer
+      # Only T8Kit, the same framework the app links. Linking T8SimulatorKit here would put a
+      # second static copy of T8Kit into the test bundle.
       - package: T8Kit
         product: T8Kit
-      - package: T8Kit
-        product: T8SimulatorKit
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

@@ -45,10 +45,10 @@ public struct T8FileListEntry: Hashable, Sendable {
         self.hasRear = hasRear
     }
 
+    /// Reads a record; a short slice is read as far as it goes.
     public init(record: ArraySlice<UInt8>) {
-        let base = record.startIndex
-        name = T8Bytes.cString(record[base..<(base + Self.nameLength)])
-        hasRear = record[base + 31] != 0
+        name = T8Bytes.cString(record.prefix(Self.nameLength))
+        hasRear = record.count >= Self.byteCount ? record[record.startIndex + 31] != 0 : false
     }
 
     /// LogonT keeps a record only if its name starts with "2" (MainFreeView.java:1331).
@@ -89,7 +89,7 @@ public struct T8FileListPage: Hashable, Sendable {
     }
 
     /// LogonT stops waiting when `current + 1 >= total` (MainFreeView.java:1343).
-    public var isLast: Bool { currentPage &+ 1 >= totalPages }
+    public var isLast: Bool { UInt64(currentPage) + 1 >= UInt64(totalPages) }
 
     public var payload: [UInt8] {
         T8Bytes.le(totalPages) + T8Bytes.le(currentPage) + entries.flatMap(\.encoded)

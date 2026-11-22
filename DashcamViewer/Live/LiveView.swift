@@ -20,12 +20,14 @@ final class LiveModel {
     private(set) var resolution = ""
     private(set) var framesShown = 0
     private var streamTask: Task<Void, Never>?
+    /// The last stop, which a new start waits for so its PreViewOff cannot hit the new live view.
+    private var stopTask: Task<Void, Never>?
     private var timeSynced = false
 
     func start(app: AppModel) {
         guard streamTask == nil else { return }
         guard app.activity == .idle || app.activity == .live else {
-            phase = .failed("A download or playback is using the camera. Try again when it has finished.")
+            phase = .failed(app.activity.busyMessage)
             return
         }
         app.activity = .live
@@ -33,7 +35,9 @@ final class LiveModel {
         message = nil
         renderer.clear()
         framesShown = 0
+        let previousStop = stopTask
         streamTask = Task { [weak self] in
+            await previousStop?.value
             await self?.run(app: app)
         }
     }
@@ -41,7 +45,10 @@ final class LiveModel {
     private func run(app: AppModel) async {
         do {
             let session = try await app.connectedSession()
+            try Task.checkCancellation()
             let config = try await session.startPreview()
+            // If stop() ran meanwhile, it sends PreViewOff once this task has returned.
+            try Task.checkCancellation()
             app.updateConfig(config)
             voiceRecording = config.isVoiceRecordingOn
             // LogonT opens port 7778 1000 ms after FREEVIEW_START (MainFreeView.java:967-972).
@@ -51,7 +58,11 @@ final class LiveModel {
                 // LogonT sets the camera clock once, 2 s after starting the preview.
                 Task {
                     try? await Task.sleep(for: .seconds(1))
-                    try? await session.setTime(T8DateTime(date: Date()))
+                    do {
+                        try await session.setTime(T8DateTime(date: Date()))
+                    } catch {
+                        app.log.warning("Setting the camera clock failed: \(error)")
+                    }
                 }
             }
             let watchdog = Task { [weak self] in
@@ -83,18 +94,29 @@ final class LiveModel {
 
     /// LogonT's onPause: RECORD_ON_OFF(0) then PreViewOff.
     func stop(app: AppModel) async {
-        let wasRunning = streamTask != nil
-        streamTask?.cancel()
+        let running = streamTask
         streamTask = nil
+        running?.cancel()
         if case .failed = phase {
             // Keep the error visible.
         } else {
             phase = .idle
         }
-        if wasRunning, let session = app.session, app.state.isConnected {
-            try? await session.stopPreview()
+        let work = Task { [weak self] in
+            // Wait until the stream task has returned, so a startPreview still in flight is finished.
+            await running?.value
+            if running != nil, let session = app.session, app.state.isConnected {
+                do {
+                    try await session.stopPreview()
+                } catch {
+                    app.log.warning("Stopping the live view failed: \(error)")
+                }
+            }
+            // A new live view may have started while we waited; leave its activity alone.
+            if app.activity == .live, self?.streamTask == nil { app.activity = .idle }
         }
-        if app.activity == .live { app.activity = .idle }
+        stopTask = work
+        await work.value
     }
 
     func switchCamera(app: AppModel) async {

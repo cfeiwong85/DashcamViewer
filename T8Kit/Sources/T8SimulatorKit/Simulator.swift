@@ -86,6 +86,8 @@ public actor T8Simulator {
     private var pendingVideo: DataJob?
     private var pendingAudio: DataJob?
     private var phoneViewMode = false
+    private var stopped = false
+    private var packetsFromClient: [Int: Int] = [:]
 
     public init(options: T8SimulatorOptions = T8SimulatorOptions(), log: T8PacketLog = T8PacketLog()) {
         self.options = options
@@ -111,7 +113,7 @@ public actor T8Simulator {
     // MARK: - Lifecycle
 
     public func start() throws {
-        let base = options.basePort
+        let base = min(options.basePort, UInt16.max - 2)
         let ports: [UInt16] = base == 0 ? [0, 0, 0] : [base, base + 1, base + 2]
         let control = try POSIXListener(host: options.host, port: ports[0])
         let video = try POSIXListener(host: options.host, port: ports[1])
@@ -126,6 +128,7 @@ public actor T8Simulator {
     }
 
     public func stop() {
+        stopped = true
         for listener in listeners { listener.close() }
         listeners.removeAll()
         for task in tasks { task.cancel() }
@@ -144,6 +147,10 @@ public actor T8Simulator {
     // MARK: - Control port
 
     private func controlConnected(_ conn: POSIXConnection) {
+        guard !stopped else {
+            conn.close()
+            return
+        }
         let id = nextClientID
         nextClientID += 1
         clients[id] = conn
@@ -151,8 +158,16 @@ public actor T8Simulator {
         log.info("Control client \(id) connected")
         let reader = Task { [weak self] in
             var parser = T8PacketParser(expectedHead: .phone, legacyShortFrameCommands: [.previewStop])
+            var reason = "phone closed the connection"
             while !Task.isCancelled {
-                guard let bytes = try? await conn.receive(maximumLength: 4096), !bytes.isEmpty else { break }
+                let bytes: [UInt8]
+                do {
+                    bytes = try await conn.receive(maximumLength: 4096)
+                } catch {
+                    reason = "receive failed: \(error)"
+                    break
+                }
+                if bytes.isEmpty { break }
                 for event in parser.append(bytes) {
                     switch event {
                     case .packet(let packet, let warnings):
@@ -162,7 +177,7 @@ public actor T8Simulator {
                     }
                 }
             }
-            await self?.closeClient(id, reason: "phone closed the connection")
+            await self?.closeClient(id, reason: reason)
         }
         clientTasks[id, default: []].append(reader)
     }
@@ -170,16 +185,22 @@ public actor T8Simulator {
     private func closeClient(_ id: Int, reason: String) {
         guard let conn = clients.removeValue(forKey: id) else { return }
         conn.close()
+        packetsFromClient[id] = nil
         for task in clientTasks.removeValue(forKey: id) ?? [] { task.cancel() }
         if activeClient == id {
-            activeClient = nil
-            liveArmed = false
-            pendingVideo = nil
-            pendingAudio = nil
-            for (_, data) in dataConnections { data.close() }
-            dataConnections.removeAll()
+            releaseSession()
         }
         log.info("Control client \(id) closed: \(reason)")
+    }
+
+    /// Frees the camera for the next phone: no live view, no pending transfer, data sockets closed.
+    private func releaseSession() {
+        activeClient = nil
+        liveArmed = false
+        pendingVideo = nil
+        pendingAudio = nil
+        for (_, data) in dataConnections { data.close() }
+        dataConnections.removeAll()
     }
 
     private func reply(_ packet: T8Packet, to id: Int) async {
@@ -201,7 +222,8 @@ public actor T8Simulator {
         let note = warnings.isEmpty ? "client \(id)" : "client \(id) \(warnings)"
         log.add(.received, command: packet.command, bytes: packet.encoded(), note: note)
         stats.commands[packet.command, default: 0] += 1
-        let received = stats.commands.values.reduce(0, +)
+        packetsFromClient[id, default: 0] += 1
+        let received = packetsFromClient[id, default: 0]
         if let limit = options.faults.dropControlAfterPackets, received >= limit, activeClient == id {
             log.warning("Fault: dropping control connection after \(received) packets")
             closeClient(id, reason: "fault: drop after packets")
@@ -217,14 +239,15 @@ public actor T8Simulator {
                     stats.rejectedConnections += 1
                     await result(.netConnectStateReply, -1, to: id)
                 } else {
+                    let isNewSession = activeClient == nil
                     activeClient = id
                     await result(.netConnectStateReply, 0, to: id)
-                    startSessionTimers(for: id)
+                    // A repeated NET_CONNECT_STATE(1) from the same phone must not start a second set of timers.
+                    if isNewSession { startSessionTimers(for: id) }
                 }
             } else if isActive {
                 // LogonT closes the socket right after sending index 0.
-                activeClient = nil
-                liveArmed = false
+                releaseSession()
             }
         case _ where !isActive:
             log.warning("Ignoring \(packet.command) from client \(id) without a session")
@@ -367,6 +390,10 @@ public actor T8Simulator {
     // MARK: - Data ports
 
     private func videoConnected(_ conn: POSIXConnection) async {
+        guard !stopped else {
+            conn.close()
+            return
+        }
         stats.videoConnections += 1
         let job = pendingVideo
         pendingVideo = nil
@@ -411,6 +438,10 @@ public actor T8Simulator {
     }
 
     private func audioConnected(_ conn: POSIXConnection) async {
+        guard !stopped else {
+            conn.close()
+            return
+        }
         stats.audioConnections += 1
         let job = pendingAudio
         pendingAudio = nil
@@ -430,11 +461,13 @@ public actor T8Simulator {
 
     /// A whole file on a data port, honouring the stall fault.
     private func writeData(_ bytes: [UInt8], to conn: POSIXConnection) async {
-        if let limit = options.faults.stallDataAfterBytes, limit < bytes.count {
+        if let requested = options.faults.stallDataAfterBytes, max(0, requested) < bytes.count {
+            let limit = max(0, requested)
             guard (try? await write(Array(bytes.prefix(limit)), to: conn)) != nil else { return }
             log.warning("Fault: data port stalled after \(limit) bytes")
-            // Keep the socket open and silent until the phone gives up or the session ends.
-            while activeClient != nil, dataConnections[ObjectIdentifier(conn)] != nil {
+            // Keep the socket open and silent until the session ends or the simulator stops (at most 2 minutes).
+            let deadline = ContinuousClock.now + .seconds(120)
+            while !stopped, activeClient != nil, dataConnections[ObjectIdentifier(conn)] != nil, ContinuousClock.now < deadline {
                 try? await Task.sleep(for: .milliseconds(100))
             }
             return

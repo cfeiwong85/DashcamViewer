@@ -8,6 +8,8 @@ import XCTest
 /// locally the tests are skipped unless those variables are set.
 final class IntegrationTests: XCTestCase {
     private var address = T8Address.camera
+    /// Shared by the session and the data streams; printed after each test for the CI log.
+    private let log = T8PacketLog()
 
     override func setUpWithError() throws {
         let environment = ProcessInfo.processInfo.environment
@@ -17,14 +19,20 @@ final class IntegrationTests: XCTestCase {
         address = .simulator(host: environment["T8SIM_HOST"] ?? "127.0.0.1", basePort: port)
     }
 
+    override func tearDown() {
+        print("---- T8 packet log for \(name) ----")
+        print(log.exportText())
+        super.tearDown()
+    }
+
     private func makeSession() -> T8ControlSession {
         var options = T8ControlSession.Options(address: address)
         options.replyTimeout = .seconds(5)
-        return T8ControlSession(connector: NWConnector(requireWiFi: false), options: options)
+        return T8ControlSession(connector: NWConnector(requireWiFi: false), options: options, log: log)
     }
 
     private var media: T8MediaClient {
-        T8MediaClient(connector: NWConnector(requireWiFi: false), address: address)
+        T8MediaClient(connector: NWConnector(requireWiFi: false), address: address, log: log)
     }
 
     func testLiveViewOverNetworkFrameworkDecodes() async throws {

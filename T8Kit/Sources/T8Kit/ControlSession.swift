@@ -78,6 +78,10 @@ public actor T8ControlSession {
     private var waiters: [Waiter] = []
     private var nextWaiterID: UInt64 = 0
     private var listInProgress = false
+    private var connecting = false
+    /// Incremented by every startPreview, so a stopPreview that is still waiting cannot
+    /// switch off a live view that was started after it.
+    private var previewGeneration = 0
     private var bufferedListPages: [T8Packet] = []
     public private(set) var isConnected = false
     public private(set) var lastConfig: T8Config?
@@ -100,7 +104,10 @@ public actor T8ControlSession {
 
     /// Opens 7777 and sends NET_CONNECT_STATE(1); succeeds when the camera answers 41023 with 0.
     public func connect() async throws {
+        guard !connecting else { throw T8SessionError.busy("already connecting") }
         guard connection == nil else { return }
+        connecting = true
+        defer { connecting = false }
         let address = options.address
         log.info("Connecting to \(address.host):\(address.controlPort)")
         let conn: any T8Connection
@@ -115,6 +122,8 @@ public actor T8ControlSession {
         startReceiving(conn)
         do {
             let reply = try await request(.phone(.netConnectState, T8Payload.index(1)), expecting: [.netConnectStateReply])
+            // The connection may have dropped while we waited for the reply.
+            guard connection === conn else { throw T8SessionError.disconnected("closed during the handshake") }
             guard let result = reply.int32Value else { throw T8SessionError.malformedReply(.netConnectState) }
             switch result {
             case 0: break
@@ -135,9 +144,12 @@ public actor T8ControlSession {
 
     /// Sends NET_CONNECT_STATE(0) like LogonT's exit paths, then closes the socket.
     public func disconnect() async {
-        guard connection != nil else { return }
+        guard let conn = connection else { return }
         try? await send(.phone(.netConnectState, T8Payload.index(0)))
-        teardown(reason: "disconnected by app")
+        // Only close the connection this call started with.
+        if connection === conn {
+            teardown(reason: "disconnected by app")
+        }
     }
 
     private func teardown(reason: String) {
@@ -323,6 +335,7 @@ public actor T8ControlSession {
     /// LogonT's live-view start after the handshake: RECORD_ON_OFF(1), GET_CONFIG,
     /// IPCAM_START, wait for its echo, then FREEVIEW_START. The caller opens port 7778 next.
     public func startPreview() async throws -> T8Config {
+        previewGeneration += 1
         try await setPhoneViewMode(true)
         let config = try await readConfig()
         _ = try await request(.phone(.ipcamStart, T8Payload.ipcamStart), expecting: [.ipcamStart])
@@ -332,8 +345,14 @@ public actor T8ControlSession {
 
     /// LogonT's onPause: RECORD_ON_OFF(0), then 500 ms later the 9-byte PreViewOff frame.
     public func stopPreview() async throws {
+        let generation = previewGeneration
         try await setPhoneViewMode(false)
-        try await Task.sleep(for: options.previewOffDelay)
+        // Not cancellable: LogonT always sends both frames.
+        try? await Task.sleep(for: options.previewOffDelay)
+        guard generation == previewGeneration else {
+            log.info("Skipped PreViewOff: a new live view started meanwhile")
+            return
+        }
         try await sendBytes(T8LegacyFrame.previewOff, command: .previewStop, note: "LogonT PreViewOff frame (length field 4, no payload)")
     }
 
@@ -363,9 +382,11 @@ public actor T8ControlSession {
 
     public func setSetting(_ setting: T8Setting, index: Int) async throws {
         guard setting.isChangeAllowed else { throw T8SessionError.rejected(setting.command, -1) }
-        try await simpleRequest(setting.command, index: Int32(index), reply: setting.replyCommand)
+        let options = setting.options(for: lastConfig)
+        guard index >= 0, options.isEmpty || index < options.count else { throw T8SessionError.rejected(setting.command, -1) }
+        try await simpleRequest(setting.command, index: Int32(clamping: index), reply: setting.replyCommand)
         if var config = lastConfig {
-            config[setting.configField] = Int32(index)
+            config[setting.configField] = Int32(clamping: index)
             lastConfig = config
         }
     }
@@ -421,7 +442,11 @@ public actor T8ControlSession {
         let packet = T8Packet.phone(.fileTransferStart, T8Payload.fileTransfer(folder: recording.folder, index: recording.index, channel: channel))
         do {
             let reply = try await request(packet, expecting: [.fileTransferStartReply], timeout: timeout)
-            return T8FileStart(payload: reply.payload)
+            guard let start = T8FileStart(payload: reply.payload) else {
+                log.warning("Unreadable 8201 reply (\(reply.payload.count) bytes); continuing without file size")
+                return nil
+            }
+            return start
         } catch T8SessionError.timeout {
             log.info("No 8201 reply within \(timeout); continuing like LogonT")
             return nil

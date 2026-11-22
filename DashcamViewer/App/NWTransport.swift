@@ -51,6 +51,11 @@ final class NWTransport: T8Connection, @unchecked Sendable {
     private let queue: DispatchQueue
     private let lock = NSLock()
     private var closed = false
+    /// Set once Network.framework has delivered the final read (peer closed). Asking for more
+    /// after that fails with "No message available on STREAM", so later reads return EOF here.
+    private var finalReadDelivered = false
+    /// An error that arrived together with data; raised on the next read.
+    private var pendingError: Error?
     private var waitingReason: String?
 
     init(connection: NWConnection, host: String, port: UInt16) {
@@ -81,9 +86,10 @@ final class NWTransport: T8Connection, @unchecked Sendable {
                 case .waiting(let error):
                     // No route yet (wrong Wi-Fi, or Local Network permission not granted). Keep the
                     // reason for the timeout message.
-                    self?.lock.lock()
-                    self?.waitingReason = "\(error)"
-                    self?.lock.unlock()
+                    guard let self else { return }
+                    self.lock.lock()
+                    self.waitingReason = "\(error)"
+                    self.lock.unlock()
                 case .cancelled:
                     once.resume(.failure(T8TransportError.closed))
                 default:
@@ -119,20 +125,45 @@ final class NWTransport: T8Connection, @unchecked Sendable {
     }
 
     func receive(maximumLength: Int) async throws -> [UInt8] {
-        guard !isClosed else { return [] }
+        let (finished, stashed): (Bool, Error?) = {
+            lock.lock()
+            defer { lock.unlock() }
+            let error = pendingError
+            pendingError = nil
+            return (closed || finalReadDelivered, error)
+        }()
+        if let stashed { throw stashed }
+        guard !finished else { return [] }
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[UInt8], Error>) in
             connection.receive(minimumIncompleteLength: 1, maximumLength: maximumLength) { [weak self] data, _, isComplete, error in
+                if isComplete { self?.markFinalRead() }
+                let closedByUs = self?.isClosed ?? true
                 if let data, !data.isEmpty {
+                    // Deliver the bytes now; a simultaneous error is raised on the next read.
+                    if let error, !closedByUs { self?.stash(T8TransportError.io("\(error)")) }
                     continuation.resume(returning: [UInt8](data))
-                } else if isComplete || (self?.isClosed ?? true) {
+                } else if closedByUs {
                     continuation.resume(returning: [])
                 } else if let error {
+                    // A reset or failure is an error even when it comes with isComplete.
                     continuation.resume(throwing: T8TransportError.io("\(error)"))
                 } else {
                     continuation.resume(returning: [])
                 }
             }
         }
+    }
+
+    private func markFinalRead() {
+        lock.lock()
+        finalReadDelivered = true
+        lock.unlock()
+    }
+
+    private func stash(_ error: Error) {
+        lock.lock()
+        pendingError = error
+        lock.unlock()
     }
 
     func close() {

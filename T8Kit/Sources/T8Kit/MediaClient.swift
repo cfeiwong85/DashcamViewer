@@ -114,10 +114,10 @@ public enum T8PCM {
     /// A 44-byte WAV header for `dataByteCount` bytes of camera PCM.
     public static func wavHeader(dataByteCount: Int) -> [UInt8] {
         let byteRate = UInt32(sampleRate * bytesPerSample)
-        var header: [UInt8] = Array("RIFF".utf8) + T8Bytes.le(UInt32(36 + dataByteCount)) + Array("WAVE".utf8)
+        var header: [UInt8] = Array("RIFF".utf8) + T8Bytes.le(UInt32(clamping: 36 + dataByteCount)) + Array("WAVE".utf8)
         header += Array("fmt ".utf8) + T8Bytes.le(UInt32(16)) + [1, 0, 1, 0]
         header += T8Bytes.le(UInt32(sampleRate)) + T8Bytes.le(byteRate) + [2, 0, 16, 0]
-        header += Array("data".utf8) + T8Bytes.le(UInt32(dataByteCount))
+        header += Array("data".utf8) + T8Bytes.le(UInt32(clamping: dataByteCount))
         return header
     }
 }

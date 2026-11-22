@@ -1,4 +1,12 @@
-import T8Kit
+import Foundation
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
+// Test-pattern sources used by the simulator and by the app's tests. They live in T8Kit
+// (not T8SimulatorKit) so the iOS test bundle links only the one T8Kit framework the app uses.
 
 /// Writes H.264 syntax elements MSB first.
 struct BitWriter {
@@ -205,9 +213,3 @@ public struct TonePCM: Sendable {
         return out
     }
 }
-
-#if canImport(Glibc)
-import Glibc
-#elseif canImport(Darwin)
-import Darwin
-#endif
