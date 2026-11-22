@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-11-22 (CLAUDE.md refresh)
+- `CLAUDE.md`: phase 7 status (install guide written; car-test checklist and in-car testing remain); a `docs/` entry saying to re-check the SideStore steps against docs.sidestore.io before editing the guide; why the integration tests allow 20 s per reply; the `ci-logs` artifact (`t8sim.log`, `test.log`, `Tests.xcresult`) that CI uploads when the iOS job fails.
+
 ## 2026-11-22 (CI: integration-test time limits)
 - CI run 44995587731 (commit ea9b64e, documentation only) failed `IntegrationTests.testListDownloadAndExport` with "No reply from the camera to NET_CONNECT_STATE." The logs show the cause: the test's request was in `t8sim`'s socket at 06:57:31.5, but `t8sim` accepted the connection 2.4 s later and read the request 9.9 s later, after the test's 5 s limit. During the same 20 seconds it took 1 s to answer an ordinary request that the next test got answered in 1 ms. The iOS-side test process stayed fast throughout. `t8sim` does no blocking or heavy work on Swift's task threads, so it was starved for CPU on the shared runner while the iOS Simulator was busy; the code behaved correctly but slowly.
 - `DashcamViewerTests/IntegrationTests.swift`: the session's reply and file-list page limits are now 20 s in these tests (they were 5 s and the 8 s default). The app's own limits for the real camera are unchanged. A missing reply still fails the test, only later.
