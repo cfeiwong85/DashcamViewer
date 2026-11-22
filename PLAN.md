@@ -1,5 +1,17 @@
 # T8 Viewer: build and test plan (approved 2026-11-22; phases 1–6 run in a cloud session, see HANDOFF.md)
 
+## Progress (updated 2026-11-22 by the cloud session)
+| Phase | Status |
+|---|---|
+| 0. Prerequisites | GitHub done; SideStore pending (you) |
+| 1. Protocol gaps | ✔ Live video = TCP 7778 (disassembled); folders 0-3 mapped; **no camera-side delete exists in LogonT** (its swipe-to-delete removes the phone's copy). See `research/T8_PROTOCOL.md` rev. 2 |
+| 2. T8Kit | ✔ `T8Kit/` package, tests with LogonT byte vectors |
+| 3. Simulator | ✔ `swift run t8sim` with fault injection; end-to-end tests |
+| 4. iOS app | PHASE4_STATUS |
+| 5. CI | PHASE5_STATUS |
+| 6. Review | ✔ 23 Haiku reviewers, verified fixes in `research/REVIEW_PHASE6.md` |
+| 7. In-car testing | Next: install via SideStore, then test in the car (needs you) |
+
 ## Interview decisions (2026-11-22)
 | Topic | Decision |
 |---|---|
@@ -21,18 +33,18 @@ The T8 does **not** use RTSP/HTTP. LogonT talks a custom binary TCP protocol to 
 - GitHub access for me: authorize the GitHub connector via `/mcp`, or install the `gh` CLI (official .pkg from cli.github.com, since Homebrew isn't installed) and run `gh auth login`.
 - SideStore: one-time install and pairing from this Mac. I'll give step-by-step instructions when we get there.
 
-**1. Close the protocol gaps (me, plus Haiku checkers)**
+**1. Close the protocol gaps (me, plus Haiku checkers)** ✔
 - Disassemble `libtutorial02.so` (`objdump`, ARM) to confirm the live-video port and any framing before the H.264 data.
 - Find the delete command and the folder-index mapping for the file list (`MainFileListView2-5`, swipe handlers).
 - Haiku: one agent per file, cross-checking every constant in `T8_PROTOCOL.md` against the source, with `path:line` evidence.
 
-**2. `T8Kit` Swift package (platform-independent, tested on this Mac with `swift test`)**
+**2. `T8Kit` Swift package (platform-independent, tested on this Mac with `swift test`)** ✔
 - Packet encoder/decoder with XOR CRC; streaming parser for partial reads.
 - `ControlSession` actor: connect, the handshake sequence, heartbeat reply (40886→40887), timeouts, "another phone already connected" error.
 - Typed commands: live start/stop, camera switch, snapshot, voice toggle, set time, file list (paged), download, delete, settings, Wi-Fi password.
 - Unit tests with byte vectors copied from the decompiled code (exact packets LogonT sends).
 
-**3. T8 simulator (Swift CLI on this Mac)**
+**3. T8 simulator (Swift CLI on this Mac)** ✔
 - Listens on 7777/7778/7779, follows the protocol, serves sample H.264/PCM clips and a fake file list, and sends heartbeats.
 - Fault injection: dropped connection, "already connected", slow link.
 
@@ -47,7 +59,7 @@ The T8 does **not** use RTSP/HTTP. LogonT talks a custom binary TCP protocol to 
 **5. CI (GitHub Actions)**
 - On push: XcodeGen, build, unit tests, iOS-simulator integration test against the T8 simulator, then an **unsigned `.ipa`** artifact.
 
-**6. Review (Haiku line-by-line, per `CLAUDE.md`)**
+**6. Review (Haiku line-by-line, per `CLAUDE.md`)** ✔
 - One `haiku-line-reviewer` per Swift file with a fixed checklist; I confirm each finding and make the fixes.
 
 **7. In-car testing (you, guided)**

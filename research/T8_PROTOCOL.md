@@ -170,7 +170,8 @@ Before listing, the list screens send 41018 idx 0 (+1500 ms) and then 40997 (+20
 3. Whether 41009's reply really is 41009 (T8Kit accepts 41009 and 41010).
 4. The exact record-name format and whether more than one 40998 page arrives for long lists.
 5. Whether the firmware still accepts this flow (LogonT was last updated in 2021).
-6. Delete on the camera: not possible with LogonT's command set. A firmware command may exist, but guessing one risks hitting format/reset handlers, so the app only deletes saved copies on the iPhone.
+6. What RECORD_ON_OFF (41018) does. LogonT sends index 0 before listing files and when leaving live view, index 1 when entering live view, and never restores it on exit (it only sends 41022 index 0). Check on hardware that the camera is still recording after the app disconnects (recording LED / the camera's screen).
+7. Delete on the camera: not possible with LogonT's command set. A firmware command may exist, but guessing one risks hitting format/reset handlers, so the app only deletes saved copies on the iPhone.
 
 ## Verification
 Rev. 2 cross-check (2026-11-22): six `haiku-checker` agents (Claude Haiku 5.5), one per source file or small file group, checked 98 claims against `MainProtocol.java`, `MainFreeView.java`, `MainFileFreeView.java`, `MainFileListView_blackbox2..5.java`, `CNSConfig.java`, `ActivityWifiPassword.java`, `ActivitySelect.java` and `MainFileListView2.java`, each answer quoting the source line. Result: 97 confirmed, 1 mismatch. The mismatch was a wording error in the claim (blackbox2 calls `FileList(up_down_flag)`, where the argument is the sort order, not the folder); the orchestrator re-read BB2:233 and BB2:541-546 and the folder index sent is 0 as stated. The native-library findings (live port 7778) were checked by the orchestrator only; Haiku agents cannot disassemble.
