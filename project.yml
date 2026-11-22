@@ -1,0 +1,23 @@
+name: DashcamViewer
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  DashcamViewer:
+    type: application
+    platform: iOS
+    sources: [DashcamViewer]
+    info:
+      path: DashcamViewer/Info.plist
+      properties:
+        CFBundleDisplayName: Dashcam Viewer
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Connects to your dashcam / DVR over its Wi-Fi network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+    settings:
+      GENERATE_INFOPLIST_FILE: NO
+      SWIFT_VERSION: "5.9"
+      PRODUCT_BUNDLE_IDENTIFIER: com.example.DashcamViewer
