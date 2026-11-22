@@ -2,6 +2,7 @@
 
 ## 2026-11-22 (Wi-Fi password hidden in the diagnostics log)
 - PR #2 (the car-test checklist) was merged into `main` as 47ce6d4 at the user's request.
+- PR #3 (this change) was merged into `main` as 32c7ed2 at the user's request, after CI run 20 on 0f0ffc6 passed.
 - `T8Kit/Sources/T8Kit/PacketLog.swift`: `T8PacketLog.add` now replaces the Wi-Fi password with zeros before it stores a frame, so the on-screen log, the shared export and `t8sim`'s output never contain it. Hidden bytes: GET_CONFIG_RESP (41013) payload 124-139 (`CNSConfig` password field); SET_WIFI_PWD (41009) payload 64-191 (`oldPwd` and `newPwd`), and the same range in 41010, the other reply T8Kit accepts, in case the camera echoes the struct. The range is clamped to the payload, so a short frame's trailer and checksum stay visible, and a 4-byte result is unchanged. Each entry records the hidden range (`T8LogEntry.hidden`); the hex shows those bytes as `**` and the note ends with "Wi-Fi password hidden". The session still parses the real reply, so the app's behaviour is unchanged.
 - Before this change the export (up to 512 bytes per line) showed the password in plain hex; the on-screen list (48 bytes per line) never reached it.
 - Tests: new `PacketLogTests` (5 tests: config reply, password change, unchanged frames, a short config reply, the on-screen limit) and an end-to-end check against `t8sim` that the exported log contains neither the old nor the new password. 73 T8Kit tests pass on Linux (Swift 6.0.3); with the redaction switched off, the new tests fail and show the password in hex.
