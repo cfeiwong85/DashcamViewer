@@ -8,7 +8,7 @@
 | Features | Live view, play recordings, save to iPhone, camera control, file browser |
 | Risky controls | Include **delete recordings** and **change Wi-Fi password**. Exclude format SD and factory reset |
 | Install / 7-day issue | Free Apple ID + **SideStore** (auto-refreshes on the phone every 7 days, no Mac needed after setup) |
-| Build | **Cloud build**: GitHub Actions macOS runner, private repo, unsigned `.ipa`, SideStore signs it |
+| Build | **Cloud build**: GitHub Actions macOS runner, public repo (made public 2026-11-22), unsigned `.ipa`, SideStore signs it |
 | This Mac | MacBookPro12,1 (2015), macOS 14.8, Swift 6.0.3 CLI only (no Xcode). Used for protocol tests, the simulator and SideStore pairing |
 | Reference device | Old iPhone/iPad with LogonT, which still works with the T8 |
 | Testing | T8 simulator on this Mac first, then in the car with a shareable diagnostics log |

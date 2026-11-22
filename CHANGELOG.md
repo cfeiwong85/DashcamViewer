@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-22 (repo made public)
+- At the user's request, changed `cfeiwong85/DashcamViewer` from private to public, keeping all its contents, including the vendor APK, PDFs and decompiled sources. The user was told about the third-party material first and chose to keep it.
+- Updated `CLAUDE.md` and `PLAN.md` to say the repo is public.
+
 ## 2026-11-22 (cloud handoff)
 - The user approved `PLAN.md`. Added `HANDOFF.md` (state, phase-by-phase instructions for the cloud session) and `.gitignore` (excludes jadx and the unzipped APK).
 - Initialised git and pushed the project to the private GitHub repo `cfeiwong85/DashcamViewer`.

@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
-An iOS (SwiftUI, iOS 17+) replacement for **LogonT**, the discontinued app for the **Eurostyle T8** Wi-Fi dashcam (front and rear). The app shows live video, browses and plays recordings, saves clips to the iPhone, and changes camera settings. `PLAN.md` holds the approved-pending build/test plan and the user's interview decisions; read it before starting a phase. `HANDOFF.md` describes the state when work moved to the cloud. Private GitHub repo: `cfeiwong85/DashcamViewer`.
+An iOS (SwiftUI, iOS 17+) replacement for **LogonT**, the discontinued app for the **Eurostyle T8** Wi-Fi dashcam (front and rear). The app shows live video, browses and plays recordings, saves clips to the iPhone, and changes camera settings. `PLAN.md` holds the approved-pending build/test plan and the user's interview decisions; read it before starting a phase. `HANDOFF.md` describes the state when work moved to the cloud. Public GitHub repo: `cfeiwong85/DashcamViewer`.
 
 ## Commands
 This Mac has only the Swift 6.0.3 Command Line Tools (no Xcode, no Homebrew, no `gh`), so iOS builds happen in CI (GitHub Actions, planned).
