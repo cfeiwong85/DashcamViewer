@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 (/init after phases 1-6)
+- Updated `CLAUDE.md` for the code as it now stands:
+  - Status: phases 1-6 done, phase 7 next.
+  - Commands: running one test suite or one test (`swift test list`, `--filter`); the actual `t8sim` options, including `--host`, `--heartbeat`, `--clip-seconds` and `dump-video`; running the iOS Simulator tests with `TEST_RUNNER_T8SIM_PORT` and `-only-testing`; installing Swift 6.0.3 in a Linux container.
+  - A new "How the pieces connect" section: the transport protocols (POSIX vs Network.framework), `T8Address`, the session, streams and shared packet log, and the `MediaActivity` gate that keeps the camera to one stream at a time.
+  - The test frameworks; why the test bundle links only `T8Kit`; and a pointer to `research/REVIEW_PHASE6.md`.
+
 ## 2026-11-22 (cloud session: phases 1-6)
 **Phase 1, protocol gaps (`research/T8_PROTOCOL.md` rev. 2).**
 - Live video is TCP **7778**: LogonT's native decoder opens the URL `socket: -f h264` through a custom FFmpeg `socket` protocol compiled into the bundled `libavformat-56.so`, whose `url_open` connects to 192.168.100.1 port 0x1E62 (disassembled with `llvm-objdump`). No framing is added; FFmpeg probes raw H.264.
