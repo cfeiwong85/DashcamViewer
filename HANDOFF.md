@@ -40,6 +40,11 @@ The user approved `PLAN.md` and asked for all remaining work to run in a cloud s
 - Write `docs/INSTALL_SIDESTORE.md` (how to get the `.ipa` from Actions and install or refresh it with SideStore). Check the current steps on sidestore.io instead of writing them from memory.
 - Write `docs/CAR_TEST_CHECKLIST.md` (side-by-side with LogonT on the old iPhone, plus sharing the diagnostics log).
 
+## Done when
+- `swift test` passes for T8Kit and the simulator end-to-end test.
+- CI is green and produces a downloadable unsigned `.ipa`.
+- The PR description says what was built, what is still unconfirmed about the protocol, and exactly what the user does next (install the app via SideStore, then test in the car).
+
 ## Working rules
 - Work on a branch and open a PR to `main`. Update `CHANGELOG.md` with every change.
 - Mark progress in PLAN.md (e.g. "Phase 2 ✔") so the user can follow it from GitHub.
