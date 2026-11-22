@@ -10,7 +10,7 @@
 | 4. iOS app | Built (SwiftUI, no dependencies); tested in CI on the iOS Simulator against `t8sim`; not yet run on the real camera |
 | 5. CI | `.github/workflows/ci.yml`: T8Kit tests (Linux + macOS), XcodeGen, iOS Simulator tests, unsigned `.ipa` artifact on green runs (Actions › CI › Artifacts) |
 | 6. Review | ✔ 23 Haiku reviewers, verified fixes in `research/REVIEW_PHASE6.md` |
-| 7. In-car testing | In progress: install guide written (`docs/INSTALL_SIDESTORE.md`); car-test checklist next; then install and test in the car (needs you) |
+| 7. In-car testing | In progress: install guide (`docs/INSTALL_SIDESTORE.md`) and car-test checklist (`docs/CAR_TEST_CHECKLIST.md`) written; next, install and test in the car (needs you) |
 
 ## Interview decisions (2026-11-22)
 | Topic | Decision |

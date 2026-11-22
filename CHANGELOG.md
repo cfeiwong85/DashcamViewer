@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-22 (phase 7: car-test checklist)
+- PR #1 (phases 1-6, the install guide and the CLAUDE.md refresh) was merged into `main` as 90db1d0 at the user's request.
+- New `docs/CAR_TEST_CHECKLIST.md`: one in-car test round with step IDs for reporting. It covers a baseline with LogonT on the old phone (lights, file lists, settings screenshots), then connection and live view, recordings and playback, saving, deleting saved copies, settings (read, compare with LogonT, change and change back), the one-phone rule, whether the camera records again after the app disconnects (open item 6 in `research/T8_PROTOCOL.md`), optional Video Quality and Wi-Fi password changes, and how to send the log. A closing table maps the protocol's open items to steps. Button labels and messages were checked against the app source. The camera facts (LED names and meanings, LogonT's screens, the factory Wi-Fi password) come from the scanned manual in `research/vendor/manual.pdf`.
+- The checklist warns that the diagnostics log contains the camera's Wi-Fi password and serial number, because the GET_CONFIG reply is logged in full hex (the password is at payload offset 124), so the log should stay out of public places.
+- `docs/INSTALL_SIDESTORE.md`: the download link now points only at `main` (the branch link was for before the merge); links to the checklist.
+- `PLAN.md` and `CLAUDE.md`: phase 7 status; `CLAUDE.md` says to keep the checklist's quoted UI text in sync with the app.
+
 ## 2026-11-22 (CLAUDE.md refresh)
 - `CLAUDE.md`: phase 7 status (install guide written; car-test checklist and in-car testing remain); a `docs/` entry saying to re-check the SideStore steps against docs.sidestore.io before editing the guide; why the integration tests allow 20 s per reply; the `ci-logs` artifact (`t8sim.log`, `test.log`, `Tests.xcresult`) that CI uploads when the iOS job fails.
 

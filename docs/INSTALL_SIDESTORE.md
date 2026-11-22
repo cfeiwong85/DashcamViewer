@@ -54,9 +54,7 @@ CI builds a new unsigned app file after every push that passes its tests and kee
 
 **On the iPhone (simplest):**
 1. In Safari, sign in at https://github.com.
-2. Open the list of passing builds:
-   - after PR #1 is merged: https://github.com/cfeiwong85/DashcamViewer/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess
-   - until then: https://github.com/cfeiwong85/DashcamViewer/actions/workflows/ci.yml?query=branch%3Aclaude%2Fgreat-dijkstra-tarcht+is%3Asuccess
+2. Open the list of passing builds on `main`: https://github.com/cfeiwong85/DashcamViewer/actions/workflows/ci.yml?query=branch%3Amain+is%3Asuccess
 3. Tap the newest run (green check).
 4. Scroll down to **Artifacts**, tap **DashcamViewer-unsigned-ipa** and confirm the download.
 5. Open the **Files** app › **Downloads** and tap `DashcamViewer-unsigned-ipa.zip`. Files unzips it into a folder that contains `DashcamViewer.ipa`.
@@ -75,7 +73,7 @@ Install the app from SideStore on the iPhone, not with iloader's **Import IPA** 
 1. Join the dashcam's Wi-Fi in **Settings › Wi-Fi**. If iOS says the network has no internet, stay connected.
 2. Open Dashcam Viewer. When iOS asks to let it find and connect to devices on the local network, tap **Allow**. If you tapped Don't Allow, turn it on later in **Settings › Privacy & Security › Local Network › Dashcam Viewer**.
 
-The in-car tests come next, in `docs/CAR_TEST_CHECKLIST.md`.
+The in-car tests come next, in [CAR_TEST_CHECKLIST.md](CAR_TEST_CHECKLIST.md).
 
 ## Part 4: Keeping it working
 With a free Apple Account, every sideloaded app stops opening 7 days after its last refresh. SideStore refreshes its apps in the background when it can. A refresh needs LocalDevVPN connected and Wi-Fi with internet. The dashcam's Wi-Fi has no internet, so refreshes only work at home or on another normal Wi-Fi network.
@@ -113,7 +111,7 @@ The build number (the CI run number) is on the first line of the diagnostics log
 
 **SideStore won't open.** Reinstall it from the Mac with iloader (Part 1, step 3).
 
-**Dashcam Viewer can't reach the camera while LocalDevVPN is connected.** This hasn't been tested yet. The app sends camera traffic over Wi-Fi only, so the VPN shouldn't get in the way. If it does, disconnect LocalDevVPN while you use the camera, reconnect it at home before refreshing, and note it in the car-test log.
+**Dashcam Viewer can't reach the camera while LocalDevVPN is connected.** This hasn't been tested yet. The app sends camera traffic over Wi-Fi only, so the VPN shouldn't get in the way. If it does, disconnect LocalDevVPN while you use the camera, reconnect it at home before refreshing, and note it in your car-test results (step C2 of [CAR_TEST_CHECKLIST.md](CAR_TEST_CHECKLIST.md)).
 
 **Still stuck.** SideStore's Discord: https://dis.sidestore.io/ (iloader problems: the idevice Discord linked in step 3).
 
