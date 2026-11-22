@@ -18,6 +18,8 @@
 
 **Phase 6, review.** 23 Haiku line reviewers; every finding re-read before acting. The fixes and the dismissed findings with reasons are in `research/REVIEW_PHASE6.md`. CI run 1 also found a Network.framework end-of-stream bug and a duplicate static copy of T8Kit in the test bundle; both fixed.
 
+**Result.** CI run 4 (commit 713d908) is green: 68 T8Kit tests on Linux and macOS, 7 of 7 iOS Simulator tests (3 against `t8sim`), and the `DashcamViewer-unsigned-ipa` artifact. Opened PR #1 to `main` with what was built, what is still unconfirmed and the next steps (install with SideStore, then test in the car).
+
 **Other.** `CLAUDE.md` commands and architecture updated for the new layout. jadx 1.5.1 downloaded to the git-ignored `research/tools/` to decode the APK's resource strings (option labels).
 
 ## 2026-11-22 (repo made public)
