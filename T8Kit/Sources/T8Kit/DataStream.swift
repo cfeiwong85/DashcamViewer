@@ -10,14 +10,20 @@ public enum T8DataStreamError: Error, Equatable, Sendable, CustomStringConvertib
     }
 }
 
-/// Reads one data port (7778 video or 7779 audio) until the camera closes it.
-public struct T8DataStream: Sendable {
+/// One data port (7778 video or 7779 audio), read until the camera closes it.
+///
+/// The sequence is pull-based: the socket is read only when the consumer asks for the next
+/// chunk, so a slow consumer (paced playback) applies TCP backpressure instead of buffering
+/// the whole recording in memory. Breaking out of the loop closes the socket.
+public struct T8DataStream: AsyncSequence, Sendable {
+    public typealias Element = [UInt8]
+
     public struct Options: Sendable {
         public var connectTimeout: Duration = .seconds(5)
         /// The camera may open the port a moment after the control command; keep retrying this long.
         public var connectRetryWindow: Duration = .seconds(4)
         public var retryInterval: Duration = .milliseconds(250)
-        /// Abort if no bytes arrive for this long.
+        /// Fail if a single read waits this long for data.
         public var idleTimeout: Duration = .seconds(15)
         public var chunkSize = 64 * 1024
 
@@ -38,51 +44,52 @@ public struct T8DataStream: Sendable {
         self.log = log
     }
 
-    /// Byte chunks until EOF. Cancelling the consumer closes the socket.
-    public func chunks() -> AsyncThrowingStream<[UInt8], Error> {
-        let (stream, continuation) = AsyncThrowingStream.makeStream(of: [UInt8].self)
-        let task = Task {
-            do {
-                let connection = try await connectWithRetry()
-                let watchdog = IdleWatchdog()
-                let watchdogTask = Task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .milliseconds(250))
-                        if watchdog.idleTime > options.idleTimeout {
-                            watchdog.markTimedOut()
-                            connection.close()
-                            return
-                        }
-                    }
-                }
-                defer {
-                    watchdogTask.cancel()
-                    connection.close()
-                }
-                var total = 0
-                while !Task.isCancelled {
-                    let bytes = try await connection.receive(maximumLength: options.chunkSize)
-                    if bytes.isEmpty { break }
-                    watchdog.touch()
-                    total += bytes.count
-                    continuation.yield(bytes)
-                }
-                if watchdog.timedOut {
-                    let seconds = Int(options.idleTimeout.components.seconds)
-                    log?.warning("Port \(port): idle for \(seconds) s after \(total) bytes")
-                    throw T8DataStreamError.idleTimeout(port: port, seconds: seconds)
-                }
-                log?.info("Port \(port): end of stream after \(total) bytes")
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
-            }
-        }
-        continuation.onTermination = { _ in task.cancel() }
-        return stream
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(stream: self)
     }
 
-    private func connectWithRetry() async throws -> any T8Connection {
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        let stream: T8DataStream
+        private let box = ConnectionBox()
+        private var finished = false
+
+        init(stream: T8DataStream) {
+            self.stream = stream
+        }
+
+        public mutating func next() async throws -> [UInt8]? {
+            guard !finished else { return nil }
+            do {
+                let connection: any T8Connection
+                if let existing = box.connection {
+                    connection = existing
+                } else {
+                    connection = try await stream.connectWithRetry()
+                    box.connection = connection
+                }
+                let bytes = try await box.receive(from: connection, maximumLength: stream.options.chunkSize, idleTimeout: stream.options.idleTimeout)
+                if bytes.isEmpty {
+                    finished = true
+                    box.close()
+                    if box.timedOut {
+                        let seconds = Int(stream.options.idleTimeout.components.seconds)
+                        stream.log?.warning("Port \(stream.port): idle for \(seconds) s after \(box.total) bytes")
+                        throw T8DataStreamError.idleTimeout(port: stream.port, seconds: seconds)
+                    }
+                    stream.log?.info("Port \(stream.port): end of stream after \(box.total) bytes")
+                    return nil
+                }
+                box.total += bytes.count
+                return bytes
+            } catch {
+                finished = true
+                box.close()
+                throw error
+            }
+        }
+    }
+
+    func connectWithRetry() async throws -> any T8Connection {
         let clock = ContinuousClock()
         let deadline = clock.now + options.connectRetryWindow
         var attempt = 0
@@ -103,33 +110,83 @@ public struct T8DataStream: Sendable {
     }
 }
 
-/// Last-activity clock shared between the reader and its watchdog.
-final class IdleWatchdog: @unchecked Sendable {
+/// Owns the socket of one iterator; closing happens on end of stream, on error, on task
+/// cancellation, or when the iterator is dropped (the consumer broke out of its loop).
+final class ConnectionBox: @unchecked Sendable {
     private let lock = NSLock()
-    private var last = ContinuousClock.now
+    private var storedConnection: (any T8Connection)?
     private var didTimeOut = false
+    var total = 0
 
-    func touch() {
-        lock.lock()
-        last = ContinuousClock.now
-        lock.unlock()
+    var connection: (any T8Connection)? {
+        get { lock.withLock { storedConnection } }
+        set { lock.withLock { storedConnection = newValue } }
     }
 
-    var idleTime: Duration {
-        lock.lock()
-        defer { lock.unlock() }
-        return ContinuousClock.now - last
+    var timedOut: Bool { lock.withLock { didTimeOut } }
+
+    func receive(from connection: any T8Connection, maximumLength: Int, idleTimeout: Duration) async throws -> [UInt8] {
+        let watchdog = Task { [weak self] in
+            try? await Task.sleep(for: idleTimeout)
+            guard !Task.isCancelled, let self else { return }
+            self.lock.withLock { self.didTimeOut = true }
+            connection.close()
+        }
+        defer { watchdog.cancel() }
+        return try await withTaskCancellationHandler {
+            try await connection.receive(maximumLength: maximumLength)
+        } onCancel: {
+            connection.close()
+        }
     }
 
-    func markTimedOut() {
-        lock.lock()
-        didTimeOut = true
-        lock.unlock()
+    func close() {
+        connection?.close()
     }
 
-    var timedOut: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return didTimeOut
+    deinit {
+        storedConnection?.close()
+    }
+}
+
+/// H.264 access units read from a data stream, pulled on demand.
+public struct T8AccessUnitSequence: AsyncSequence, Sendable {
+    public typealias Element = H264AccessUnit
+
+    public let chunks: T8DataStream
+
+    public init(chunks: T8DataStream) {
+        self.chunks = chunks
+    }
+
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(chunks: chunks.makeAsyncIterator(), log: chunks.log)
+    }
+
+    public struct AsyncIterator: AsyncIteratorProtocol {
+        var chunks: T8DataStream.AsyncIterator
+        let log: T8PacketLog?
+        var parser = AnnexBParser()
+        var assembler = H264AccessUnitAssembler()
+        var ready: [H264AccessUnit] = []
+        var ended = false
+        var reportedSkip = false
+
+        public mutating func next() async throws -> H264AccessUnit? {
+            while ready.isEmpty {
+                if ended { return nil }
+                if let chunk = try await chunks.next() {
+                    ready += assembler.append(parser.append(chunk))
+                    if !reportedSkip, parser.skippedLeadingBytes > 0 {
+                        reportedSkip = true
+                        log?.warning("Video: skipped \(parser.skippedLeadingBytes) bytes before the first H.264 start code")
+                    }
+                } else {
+                    ended = true
+                    ready += assembler.append(parser.finish()) + assembler.finish()
+                }
+            }
+            return ready.removeFirst()
+        }
     }
 }

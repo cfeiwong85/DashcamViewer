@@ -25,35 +25,13 @@ public struct T8MediaClient: Sendable {
     }
 
     /// H.264 access units from port 7778 (live view after `startPreview`, or playback after 8200).
-    public func accessUnits() -> AsyncThrowingStream<H264AccessUnit, Error> {
-        let chunks = videoStream().chunks()
-        let log = log
-        let (stream, continuation) = AsyncThrowingStream.makeStream(of: H264AccessUnit.self)
-        let task = Task {
-            var parser = AnnexBParser()
-            var assembler = H264AccessUnitAssembler()
-            var reportedSkip = false
-            do {
-                for try await chunk in chunks {
-                    for au in assembler.append(parser.append(chunk)) { continuation.yield(au) }
-                    if !reportedSkip, parser.skippedLeadingBytes > 0 {
-                        reportedSkip = true
-                        log?.warning("Video: skipped \(parser.skippedLeadingBytes) bytes before the first H.264 start code")
-                    }
-                }
-                for au in assembler.append(parser.finish()) + assembler.finish() { continuation.yield(au) }
-                continuation.finish()
-            } catch {
-                continuation.finish(throwing: error)
-            }
-        }
-        continuation.onTermination = { _ in task.cancel() }
-        return stream
+    public func accessUnits() -> T8AccessUnitSequence {
+        T8AccessUnitSequence(chunks: videoStream())
     }
 
     /// 8 kHz mono 16-bit PCM chunks from port 7779.
-    public func audioChunks() -> AsyncThrowingStream<[UInt8], Error> {
-        audioStream().chunks()
+    public func audioChunks() -> T8DataStream {
+        audioStream()
     }
 
     /// Requests a recording with 8200 and writes the raw streams to `directory`:
@@ -77,8 +55,8 @@ public struct T8MediaClient: Sendable {
         let videoURL = directory.appendingPathComponent(isVideo ? recording.fileStem(for: channel) + ".h264" : recording.name)
         let audioURL = isVideo ? directory.appendingPathComponent(recording.fileStem(for: channel) + ".pcm") : nil
 
-        let videoChunks = videoStream().chunks()
-        let audioChunks = isVideo ? audioStream().chunks() : nil
+        let videoChunks = videoStream()
+        let audioChunks = isVideo ? audioStream() : nil
         async let videoBytes = Self.write(videoChunks, to: videoURL) { total in progress?(total, expected) }
         async let audioBytes = Self.write(audioChunks, to: audioURL, onProgress: nil)
         let (video, audio) = try await (videoBytes, audioBytes)
@@ -90,7 +68,7 @@ public struct T8MediaClient: Sendable {
     }
 
     private static func write(
-        _ chunks: AsyncThrowingStream<[UInt8], Error>?,
+        _ chunks: T8DataStream?,
         to url: URL?,
         onProgress: ((Int) -> Void)?
     ) async throws -> Int {
