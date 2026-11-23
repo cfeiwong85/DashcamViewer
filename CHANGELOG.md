@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-11-23 (demo script)
+- New `docs/DEMO_SCRIPT.md`: a 10-minute presentation script for showing the app on the iPhone against `t8sim` on the Mac, with what to say and do at each step. It covers getting the source onto the Mac (the release's "Source code (zip)" or `git clone`, because `T8Kit` is not in the `.ipa`), the first build, connecting the iPhone (Settings › Connection, Local Network prompt), mirroring the phone with QuickTime, the walkthrough (live view, front and rear, photo, recordings, playback, saving, settings), failure handling (stopping `t8sim` with Ctrl-C, `--already-connected`), Diagnostics with the hidden password, a fixes table and likely questions. Button labels, messages and the simulator's sample data were checked against the source. Not yet tried on a real iPhone.
+- `CLAUDE.md`: lists the demo script under `docs/`.
+
 ## 2026-11-22 (Wi-Fi password hidden in the diagnostics log)
 - PR #2 (the car-test checklist) was merged into `main` as 47ce6d4 at the user's request.
 - PR #3 (this change) was merged into `main` as 32c7ed2 at the user's request, after CI run 20 on 0f0ffc6 passed.
