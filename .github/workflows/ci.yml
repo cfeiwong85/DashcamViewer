@@ -21,6 +21,66 @@ jobs:
         working-directory: T8Kit
         run: swift test
 
+  t8sim-macos:
+    name: Ready-made t8sim for macOS 13+ (Intel and Apple silicon)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select the newest Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          swift --version
+
+      - name: Build t8sim for x86_64 and arm64 and join them
+        working-directory: T8Kit
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/t8sim-macos"
+          mkdir -p "$OUT"
+          for ARCH in x86_64 arm64; do
+            swift build -c release --product t8sim --arch "$ARCH"
+            cp "$(swift build -c release --product t8sim --arch "$ARCH" --show-bin-path)/t8sim" "$RUNNER_TEMP/t8sim-$ARCH"
+          done
+          lipo -create "$RUNNER_TEMP/t8sim-x86_64" "$RUNNER_TEMP/t8sim-arm64" -output "$OUT/t8sim"
+          codesign --force --sign - "$OUT/t8sim"
+          lipo -info "$OUT/t8sim"
+          lipo "$OUT/t8sim" -verify_arch x86_64 arm64
+          # The user's Mac runs macOS 14, so the binary must not require anything newer.
+          for ARCH in x86_64 arm64; do
+            MINOS=$(vtool -arch "$ARCH" -show-build "$OUT/t8sim" | awk '/minos/ {print $2}')
+            echo "$ARCH needs macOS $MINOS or newer"
+            [ "${MINOS%%.*}" -le 14 ]
+          done
+          cp ../docs/T8SIM_MAC_README.txt "$OUT/README.txt"
+
+      - name: Check that both halves start and listen
+        run: |
+          set -euo pipefail
+          BIN="$RUNNER_TEMP/t8sim-macos/t8sim"
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+          for ARCH in arm64 x86_64; do
+            PORT=$([ "$ARCH" = arm64 ] && echo 27777 || echo 27787)
+            arch -"$ARCH" "$BIN" --host 127.0.0.1 --port "$PORT" > "$RUNNER_TEMP/smoke-$ARCH.log" 2>&1 &
+            PID=$!
+            for _ in $(seq 1 20); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.5; done
+            nc -z 127.0.0.1 "$PORT"
+            grep -q "T8 simulator ready" "$RUNNER_TEMP/smoke-$ARCH.log"
+            kill "$PID"
+            echo "$ARCH: started and listened on $PORT"
+          done
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: t8sim-macos
+          path: ${{ runner.temp }}/t8sim-macos
+          retention-days: 90
+
   ios:
     name: iOS app (build, test against the T8 simulator, unsigned IPA)
     runs-on: macos-26

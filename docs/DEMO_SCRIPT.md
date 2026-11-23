@@ -29,6 +29,20 @@ swift run t8sim
 ```
 The first build takes several minutes. It is ready when it prints `T8 simulator ready: control 7777, video 7778, audio 7779. Press Ctrl-C to stop.` If macOS asks whether `t8sim` may accept incoming network connections, click **Allow**. Later starts take a few seconds.
 
+**If the build fails** (for example with "Invalid manifest" or "Undefined symbols"), use the ready-made program instead. It needs no Swift on the Mac.
+1. In Safari, sign in at https://github.com and open the list of passing builds: https://github.com/cfeiwong85/DashcamViewer/actions/workflows/ci.yml?query=is%3Asuccess
+2. Open the newest run (green check) whose **Artifacts** list includes **t8sim-macos**, and click it. Safari saves it in `Downloads` and unzips it into a folder named `t8sim-macos`.
+3. In Terminal, once:
+   ```bash
+   cd ~/Downloads/t8sim-macos
+   chmod +x t8sim
+   xattr -c t8sim
+   ```
+   (The download loses the "runnable" setting, and `xattr -c` removes the "downloaded from the internet" mark that would make macOS block it.)
+4. Start it with `./t8sim` from that folder. It prints the same ready line.
+
+With the ready-made program, type `./t8sim` (in the `t8sim-macos` folder) wherever this script says `swift run t8sim`; the options, such as `--already-connected`, are the same.
+
 ### 1.3 Connect the iPhone
 1. Install the app with SideStore (`docs/INSTALL_SIDESTORE.md`) if it is not installed yet.
 2. Find the Mac's IP address in a second Terminal window: `ipconfig getifaddr en0` (for example `192.168.1.23`).
@@ -43,7 +57,7 @@ The first build takes several minutes. It is ready when it prints `T8 simulator 
 
 ## 2. On the day (10 minutes before)
 
-1. Start the simulator: `cd` into `T8Kit` (1.1), then `swift run t8sim`.
+1. Start the simulator: `cd` into `T8Kit` (1.1), then `swift run t8sim`. With the ready-made program (1.2): `cd ~/Downloads/t8sim-macos`, then `./t8sim`.
 2. Check the Mac's IP address again (`ipconfig getifaddr en0`). It can change between networks; if it did, update it in the app's Settings.
 3. Plug the iPhone into the Mac with a cable. Open **QuickTime Player** › File › **New Movie Recording**. Click the small arrow next to the record button and choose the iPhone as the camera. The iPhone's screen appears on the Mac.
 4. Arrange the Mac's screen: QuickTime (the phone) on the left, the Terminal running `t8sim` on the right. Make the Terminal font large (Cmd and +).

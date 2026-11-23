@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-11-23 (ready-made t8sim for Macs)
+- The user's Mac (Intel, macOS 14.8, Command Line Tools 16.2 with Swift 6.0.3, reinstalled today) still cannot build `t8sim`: compiling `Package.swift` fails with "Invalid manifest" and an undefined `PackageDescription.Package.__allocating_init(... swiftLanguageVersions: ...)` symbol for x86_64. The manifest is standard and builds in CI, so the fault is in that Mac's toolchain; the cause is not yet known.
+- `.github/workflows/ci.yml`: new job `t8sim-macos` on `macos-26`. It builds `t8sim` in release mode for x86_64 and arm64, joins them with `lipo`, signs the result ad hoc, checks that neither half needs a macOS newer than 14, starts each half (x86_64 under Rosetta) and checks that it prints its ready line and listens, then uploads the artifact `t8sim-macos` (`t8sim` and `README.txt`, kept 90 days).
+- New `docs/T8SIM_MAC_README.txt`: shipped in the artifact as `README.txt`; how to make the download runnable (`chmod +x`, `xattr -c`) and start it.
+- `docs/DEMO_SCRIPT.md`: 1.2 says how to download and use the ready-made program when the build fails; section 2 gives its start command.
+- `CLAUDE.md`: describes the new CI job and artifact.
+
 ## 2026-11-23 (demo script)
 - New `docs/DEMO_SCRIPT.md`: a 10-minute presentation script for showing the app on the iPhone against `t8sim` on the Mac, with what to say and do at each step. It covers getting the source onto the Mac (the release's "Source code (zip)" or `git clone`, because `T8Kit` is not in the `.ipa`), the first build, connecting the iPhone (Settings › Connection, Local Network prompt), mirroring the phone with QuickTime, the walkthrough (live view, front and rear, photo, recordings, playback, saving, settings), failure handling (stopping `t8sim` with Ctrl-C, `--already-connected`), Diagnostics with the hidden password, a fixes table and likely questions. Button labels, messages and the simulator's sample data were checked against the source. Not yet tried on a real iPhone.
 - `CLAUDE.md`: lists the demo script under `docs/`.
