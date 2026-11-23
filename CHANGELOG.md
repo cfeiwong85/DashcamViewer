@@ -3,6 +3,7 @@
 ## 2026-11-23 (ready-made t8sim for Macs)
 - The user's Mac (Intel, macOS 14.8, Command Line Tools 16.2 with Swift 6.0.3, reinstalled today) still cannot build `t8sim`: compiling `Package.swift` fails with "Invalid manifest" and an undefined `PackageDescription.Package.__allocating_init(... swiftLanguageVersions: ...)` symbol for x86_64. The manifest is standard and builds in CI, so the fault is in that Mac's toolchain; the cause is not yet known.
 - `.github/workflows/ci.yml`: new job `t8sim-macos` on `macos-26`. It builds `t8sim` in release mode for x86_64 and arm64, joins them with `lipo`, signs the result ad hoc, checks that neither half needs a macOS newer than 14, starts each half (x86_64 under Rosetta) and checks that it prints its ready line and listens, then uploads the artifact `t8sim-macos` (`t8sim` and `README.txt`, kept 90 days).
+- CI run 26 (abaf28a): the build passed (both halves need macOS 13.0) and both halves started and listened, but the x86_64 check failed because it read the log just before `t8sim` printed its ready line (it opens the ports first). The check now waits up to 20 s for the line, prints the log, then checks the port.
 - New `docs/T8SIM_MAC_README.txt`: shipped in the artifact as `README.txt`; how to make the download runnable (`chmod +x`, `xattr -c`) and start it.
 - `docs/DEMO_SCRIPT.md`: 1.2 says how to download and use the ready-made program when the build fails; section 2 gives its start command.
 - `CLAUDE.md`: describes the new CI job and artifact.

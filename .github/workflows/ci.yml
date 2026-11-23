@@ -68,9 +68,11 @@ jobs:
             PORT=$([ "$ARCH" = arm64 ] && echo 27777 || echo 27787)
             arch -"$ARCH" "$BIN" --host 127.0.0.1 --port "$PORT" > "$RUNNER_TEMP/smoke-$ARCH.log" 2>&1 &
             PID=$!
-            for _ in $(seq 1 20); do nc -z 127.0.0.1 "$PORT" 2>/dev/null && break; sleep 0.5; done
-            nc -z 127.0.0.1 "$PORT"
+            # t8sim opens its ports and then prints the ready line, so wait for the line.
+            for _ in $(seq 1 40); do grep -q "T8 simulator ready" "$RUNNER_TEMP/smoke-$ARCH.log" && break; sleep 0.5; done
+            cat "$RUNNER_TEMP/smoke-$ARCH.log"
             grep -q "T8 simulator ready" "$RUNNER_TEMP/smoke-$ARCH.log"
+            nc -z 127.0.0.1 "$PORT"
             kill "$PID"
             echo "$ARCH: started and listened on $PORT"
           done
